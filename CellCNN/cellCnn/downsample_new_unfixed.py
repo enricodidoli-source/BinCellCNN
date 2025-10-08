@@ -23,7 +23,7 @@ def random_subsample(X, target_nobs, replace=True, seed = 42):
     
     nobs = X.shape[0]
     if (not replace) and (nobs <= target_nobs):
-        return X, cells_labels
+        return X #, cells_labels
     else:
         indices = np.random.choice(nobs, size=target_nobs, replace=replace)
         

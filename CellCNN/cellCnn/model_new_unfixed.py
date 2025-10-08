@@ -433,7 +433,7 @@ def train_model(train_samples, train_phenotypes, outdir,
         print(f'\n# ============================================= #')
         print(f'Run: {irun}\n')
         # Usa seed diverso per ogni run, ma riproducibile
-        run_seed = seed + irun * 1000  # ← CHIAVE!
+        run_seed = seed + irun * 10  # ← CHIAVE!
         print(f'Seed: {run_seed}')
         np.random.seed(run_seed)
         tf.random.set_seed(run_seed)
@@ -447,8 +447,12 @@ def train_model(train_samples, train_phenotypes, outdir,
 
         #### Learning Rate ####     
         if learning_rate is None:
-            lr = 10 ** np.random.uniform(-3, -2) # random choice 
-            config['learning_rate'].append(lr)
+            learning_rate = [0.001, 0.01, 0.1]
+            
+            #lr = 10 ** np.random.uniform(-3, -2) # random choice 
+        lr = np.random.choice(learning_rate)
+        
+        config['learning_rate'].append(lr)
 
         #### Number of filters ####
         # choose number of filters for this run
@@ -458,10 +462,13 @@ def train_model(train_samples, train_phenotypes, outdir,
 
         #### Number of top k cells in the pooling layer ###
         # choose number of cells pooled for this run
-        mp = maxpool_percentages[irun % len(maxpool_percentages)]
+        
+        mp = np.random.choice(maxpool_percentages)
+        #mp = maxpool_percentages[irun % len(maxpool_percentages)]
         config['maxpool_percentage'].append(mp)
         k = max(1, int(mp / 100. * ncell))
         logger.info(f"Cells pooled: {k}")
+
 
         # ============================================= #
         # build the neural network

@@ -275,17 +275,20 @@ def dataset_elaboration(multiple_donations, ALL_DATASETS, healthy_donors, blast_
     
     random.seed(seed)
     print(f'Precess starts. Dividing donors...')
+    
     # sammple indexed for donor division
     healthy_donors_idx = random.sample(list(range(len(healthy_donors))), len(healthy_donors))
     blast_donors_idx = random.sample(list(range(len(blast_donors))), len(blast_donors))
     mixed_donors_idx = random.sample(list(range(len(mixed_donors))), len(mixed_donors))
-    print(healthy_donors_idx, blast_donors_idx, mixed_donors_idx)
+    print(f'healthy_donors_idx, blast_donors_idx, mixed_donors_idx: {healthy_donors_idx}, {blast_donors_idx},{mixed_donors_idx}')
 
     print(f'Seting Train, Validation and Test idx...')
     # just divide accoding to the sampled indexes
     train_donors_idx, val_donors_idx, test_donors_idx = splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx)
     print(train_donors_idx, val_donors_idx, test_donors_idx)
     print(f'Extracting data...')
+
+
     
     # extract donors datasets from the entire natch od datasets and place them into correct dataset
     raw_train_datasets = dataset_extraction(train_donors_idx, multiple_donations, ALL_DATASETS)
@@ -337,8 +340,8 @@ def CellCNN_restructured(CellCnn, train_datasets, train_y, val_datasets, val_y, 
         per_sample = True,                                # For each sample, nsubset samples of ncell are performed
         nfilter_choice= [3,5,7,9], #list(range(3,21)),                 # Range of possible number of filters
         maxpool_percentages=[0.01, 1., 5., 20., 100.],    # list of k-percentage max_pooling
-        learning_rate=[0.01], #, 0.1, 1, 10, 50, 100],                               # Learning rate
-        max_epochs = max_epochs, #50
+        learning_rate=None, #[0.01], #, 0.1, 1, 10, 50, 100],                               # Learning rate
+        max_epochs = max_epochs,  #50
         patience=5,                                       # Early stopping patience
         nrun = nrun,  #15                                     # Number of neural network configurations to try (for Hyperparameter optimization)
         regression=False,
@@ -385,7 +388,7 @@ def run_CellCNN_res(CellCnn, train_datasets, train_y,
 
     for i in range(trials):
         print(f'Trial {i+1} started')
-        seed = seed_list[i] * i * 2000
+        seed = seed_list[i] * i * 2
         print(f'Seed used: {seed}')
         test_pred, model_param = CellCNN_restructured(CellCnn, train_datasets, train_y, val_datasets, val_y, test_datasets_no_labels,
                                                     n_cell, max_epochs, nrun, seed)
@@ -422,7 +425,7 @@ def CV_CellCNN_restructured(CellCnn, cv_train_datasets, cv_train_y, k = 5, n_cel
         val_labels     = [cv_train_y[i] for i in val_idx]
         print(f'Folds Created!')
 
-        fold_seed = seed*(fold + 1)*3000
+        fold_seed = seed*(fold + 1)*3
         print(f'seed: {fold_seed}')
         # use n_cell equal to the minimum dimension over all datasets (subdatasets)
         if n_cell == 'min':
@@ -435,9 +438,9 @@ def CV_CellCNN_restructured(CellCnn, cv_train_datasets, cv_train_y, k = 5, n_cel
             per_sample = True,                                # For each sample, nsubset samples of ncell are performed
             nfilter_choice= [3,5,7,9],                  # Range of possible number of filters
             maxpool_percentages=[0.01, 1., 5., 20., 100.],    # list of k-percentage max_pooling
-            learning_rate=[0.01], #, 0.1, 1, 10, 50, 100],                               # Learning rate
+            learning_rate= None, # [0.01], #, 0.1, 1, 10, 50, 100],                               # Learning rate
             max_epochs = max_epochs,
-            patience=5,                                       # Early stopping patience
+            patience=10,                                       # Early stopping patience
             nrun = nrun,                                     # Number of neural network configurations to try (for Hyperparameter optimization)
             regression=False,
             scale=True,                                       # Z-score normalization
