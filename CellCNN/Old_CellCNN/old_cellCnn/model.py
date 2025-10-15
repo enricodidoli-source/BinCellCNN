@@ -12,12 +12,13 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
+import random
 
-from cellCnn.utils import combine_samples, normalize_outliers_to_control
-from cellCnn.utils import cluster_profiles, keras_param_vector
-from cellCnn.utils import generate_subsets, generate_biased_subsets
-from cellCnn.utils import get_filters_classification, get_filters_regression
-from cellCnn.utils import mkdir_p
+from old_cellCnn.utils import combine_samples, normalize_outliers_to_control
+from old_cellCnn.utils import cluster_profiles, keras_param_vector
+from old_cellCnn.utils import generate_subsets, generate_biased_subsets
+from old_cellCnn.utils import get_filters_classification, get_filters_regression
+from old_cellCnn.utils import mkdir_p
 
 import tensorflow as tf
 from tensorflow import keras
@@ -90,7 +91,7 @@ class CellCnn(object):
                  nfilter_choice=None, dropout='auto', dropout_p=.5,
                  coeff_l1=0, coeff_l2=0.0001, learning_rate=None,
                  regression=False, max_epochs=20, patience=5, nrun=15, dendrogram_cutoff=0.4,
-                 accur_thres=.95, verbose=1):
+                 accur_thres=.95, verbose=1, seed = 42):
 
         # initialize model attributes
         self.scale = scale
@@ -114,7 +115,9 @@ class CellCnn(object):
         self.accur_thres = accur_thres
         self.verbose = verbose
         self.results = None
-        #self.hy_par_choice = ''
+        self.model_sorted_idx = None
+        self.seed = seed
+        self.resampled =  None
 
     def fit(self, train_samples, train_phenotypes, outdir, valid_samples=None,
             valid_phenotypes=None, generate_valid_set=True):
@@ -165,9 +168,8 @@ class CellCnn(object):
                           dropout=self.dropout, dropout_p=self.dropout_p,
                           max_epochs=self.max_epochs,
                           patience=self.patience, dendrogram_cutoff=self.dendrogram_cutoff,
-                          accur_thres=self.accur_thres, verbose=self.verbose)
-        self.results = res #[0]
-        #self.hy_par_choice = res[1]
+                          accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed)
+        self.results = res
         return self
 
     def predict(self, new_samples, ncell_per_sample=None):
@@ -228,6 +230,25 @@ class CellCnn(object):
             
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
+def data_transformation(dataset):
+
+        # Copy the 'IsBlast' column
+        dataset_labels = dataset[:, -1].copy()  # shape: (n_righe,)
+        dataset_labels = dataset_labels.astype(int) # convert data in integers
+
+        # Remove the 'IsBlast' column to not be included in the transformation
+        dataset_no_labels = dataset[:, :-1]  # shape: (n_righe, n_colonne - 1)
+        
+        z_scaler = StandardScaler(with_mean=True, with_std=True) 
+        z_scaler.fit(dataset_no_labels) #scale data
+
+        transformed_dataset_no_labels = z_scaler.transform(dataset_no_labels)
+
+        #append the 'IsBlast' column    
+        dataset_after = np.column_stack([transformed_dataset_no_labels, dataset_labels])
+        
+        return dataset_after, z_scaler
+    
 
 def train_model(train_samples, train_phenotypes, outdir,
                 valid_samples=None, valid_phenotypes=None, generate_valid_set=True,
@@ -236,10 +257,14 @@ def train_model(train_samples, train_phenotypes, outdir,
                 maxpool_percentages=None, nfilter_choice=None,
                 learning_rate=None, coeff_l1=0, coeff_l2=1e-4, dropout='auto', dropout_p=.5,
                 max_epochs=20, patience=5,
-                dendrogram_cutoff=0.4, accur_thres=.95, verbose=1):
-
+                dendrogram_cutoff=0.4, accur_thres=.95, verbose=1, seed = 42):
+    import tensorflow as tf
     """ Performs a CellCnn analysis """
-
+    # Imposta i seed GLOBALI all'inizio
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!
+    
     if maxpool_percentages is None:
         maxpool_percentages = [0.01, 1., 5., 20., 100.]
     if nfilter_choice is None:
@@ -250,152 +275,61 @@ def train_model(train_samples, train_phenotypes, outdir,
     if nrun < 3:
         logger.info(f"The nrun argument should be >= 3, setting it to 3.")
         nrun = 3
-
+    
     # copy the list of samples so that they are not modified in place
     train_samples = copy.deepcopy(train_samples)
     if valid_samples is not None:
         valid_samples = copy.deepcopy(valid_samples)
 
-    # normalize extreme values
-    # we assume that 0 corresponds to the control class
-    if subset_selection == 'outlier':
-        ctrl_list = [train_samples[i] for i in np.where(np.array(train_phenotypes) == 0)[0]]
-        test_list = [train_samples[i] for i in np.where(np.array(train_phenotypes) != 0)[0]]
-        train_samples = normalize_outliers_to_control(ctrl_list, test_list)
-
-        if valid_samples is not None:
-            ctrl_list = [valid_samples[i] for i in np.where(np.array(valid_phenotypes) == 0)[0]]
-            test_list = [valid_samples[i] for i in np.where(np.array(valid_phenotypes) != 0)[0]]
-            valid_samples = normalize_outliers_to_control(ctrl_list, test_list)
-
     # merge all input samples (X_train, X_valid)
     # and generate an identifier for each of them (train_id, valid_id)
     train_sample_ids = np.arange(len(train_phenotypes))
-    if (valid_samples is None) and (not generate_valid_set):
 
-        X_train, id_train = combine_samples(train_samples, train_sample_ids)
+    X_train, id_train = combine_samples(train_samples, train_sample_ids)
 
-    elif (valid_samples is None) and generate_valid_set:
-        X, sample_id = combine_samples(train_samples, train_sample_ids)
-        valid_phenotypes = train_phenotypes
+    valid_sample_ids = np.arange(len(valid_phenotypes))
+    X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
 
-        # split into train-validation partitions
-        eval_folds = 5
-        kf = StratifiedKFold(n_splits=eval_folds)
-        train_indices, valid_indices = next(kf.split(X, sample_id))
-        X_train, id_train = X[train_indices], sample_id[train_indices]
-        X_valid, id_valid = X[valid_indices], sample_id[valid_indices]
-
-    else:
-        X_train, id_train = combine_samples(train_samples, train_sample_ids)
-        valid_sample_ids = np.arange(len(valid_phenotypes))
-        X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
-
-    if quant_normed:
-        z_scaler = StandardScaler(with_mean=True, with_std=False)
-        z_scaler.fit(0.5 * np.ones((1, X_train.shape[1])))
-        X_train = z_scaler.transform(X_train)
-    elif scale:
-        z_scaler = StandardScaler(with_mean=True, with_std=True)
-        z_scaler.fit(X_train)
-        #print(f"before: {X_train}")
-        X_train = z_scaler.transform(X_train)
-        #print(f"after: {X_train}")
+    if scale:
+        X_train, z_scaler = data_transformation(X_train)
     else:
         z_scaler = None
 
-    X_train, id_train = shuffle(X_train, id_train)
+    X_train, id_train = shuffle(X_train, id_train,  random_state=seed)
     train_phenotypes = np.asarray(train_phenotypes)
-
+    #print(f'id_train: {id_train}')
     # an array containing the phenotype for each single cell
     y_train = train_phenotypes[id_train]
 
     if (valid_samples is not None) or generate_valid_set:
+        
         if scale:
-            X_valid = z_scaler.transform(X_valid)
+            X_valid, z_scaler = data_transformation(X_valid)
 
-        X_valid, id_valid = shuffle(X_valid, id_valid)
+        X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
         valid_phenotypes = np.asarray(valid_phenotypes)
         y_valid = valid_phenotypes[id_valid]
 
     # number of measured markers
-    nmark = X_train.shape[1]
+    nmark = X_train.shape[1] - 1
 
+
+    
     # generate multi-cell inputs
     logger.info("Generating multi-cell inputs...")
 
-    if subset_selection == 'outlier':
-        # here we assume that class 0 is always the control class
-        x_ctrl_train = X_train[y_train == 0]
-        to_keep = int(0.1 * (X_train.shape[0] / len(train_phenotypes)))
-        nsubset_ctrl = nsubset // np.sum(train_phenotypes == 0)
-
-        # generate a fixed number of subsets per class
-        nsubset_biased = [0]
-        for pheno in range(1, len(np.unique(train_phenotypes))):
-            nsubset_biased.append(nsubset // np.sum(train_phenotypes == pheno))
-
-        X_tr, y_tr = generate_biased_subsets(X_train, train_phenotypes, id_train, x_ctrl_train,
-                                             nsubset_ctrl, nsubset_biased, ncell, to_keep,
-                                             id_ctrl=np.where(train_phenotypes == 0)[0],
-                                             id_biased=np.where(train_phenotypes != 0)[0])
-        # save those because it takes long to generate
-        # np.save(os.path.join(outdir, 'X_tr.npy'), X_tr)
-        # np.save(os.path.join(outdir, 'y_tr.npy'), y_tr)
-        # X_tr = np.load(os.path.join(outdir, 'X_tr.npy'))
-        # y_tr = np.load(os.path.join(outdir, 'y_tr.npy'))
-
-        if (valid_samples is not None) or generate_valid_set:
-            x_ctrl_valid = X_valid[y_valid == 0]
-            nsubset_ctrl = nsubset // np.sum(valid_phenotypes == 0)
-
-            # generate a fixed number of subsets per class
-            nsubset_biased = [0]
-            for pheno in range(1, len(np.unique(valid_phenotypes))):
-                nsubset_biased.append(nsubset // np.sum(valid_phenotypes == pheno))
-
-            to_keep = int(0.1 * (X_valid.shape[0] / len(valid_phenotypes)))
-            X_v, y_v = generate_biased_subsets(X_valid, valid_phenotypes, id_valid, x_ctrl_valid,
-                                               nsubset_ctrl, nsubset_biased, ncell, to_keep,
-                                               id_ctrl=np.where(valid_phenotypes == 0)[0],
-                                               id_biased=np.where(valid_phenotypes != 0)[0])
-            # save those because it takes long to generate
-            # np.save(os.path.join(outdir, 'X_v.npy'), X_v)
-            # np.save(os.path.join(outdir, 'y_v.npy'), y_v)
-            # X_v = np.load(os.path.join(outdir, 'X_v.npy'))
-            # y_v = np.load(os.path.join(outdir, 'y_v.npy'))
-        else:
-            cut = X_tr.shape[0] // 5
-            X_v = X_tr[:cut]
-            y_v = y_tr[:cut]
-            X_tr = X_tr[cut:]
-            y_tr = y_tr[cut:]
-    else:
+    if subset_selection != 'outlier':
         # generate 'nsubset' multi-cell inputs per input sample
         if per_sample:
             print(train_phenotypes)
-            X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
-                                          nsubset, ncell, per_sample)
-            
-            if (valid_samples is not None) or generate_valid_set:
-                X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
-                                            nsubset, ncell, per_sample)
-                
-        # generate 'nsubset' multi-cell inputs per class
-        else:
-            nsubset_list = []
-            for pheno in range(len(np.unique(train_phenotypes))):
-                nsubset_list.append(nsubset // np.sum(train_phenotypes == pheno))
-            X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
-                                          nsubset_list, ncell, per_sample)
+            X_tr, y_tr, S, y_train_resampled = generate_subsets(X_train, train_phenotypes, id_train,
+                                          nsubset, ncell, per_sample, seed=seed)
 
+            resampled = S.copy()
             if (valid_samples is not None) or generate_valid_set:
-                nsubset_list = []
-                for pheno in range(len(np.unique(valid_phenotypes))):
-                    nsubset_list.append(nsubset // np.sum(valid_phenotypes == pheno))
-                X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
-                                            nsubset_list, ncell, per_sample)
-    logger.info("Done.")
+                X_v, y_v, S, y_valid_resampled = generate_subsets(X_valid, valid_phenotypes, id_valid,
+                                            nsubset, ncell, per_sample, seed=seed)
+                
 
     # neural network configuration
     # batch size
@@ -421,12 +355,17 @@ def train_model(train_samples, train_phenotypes, outdir,
     config['maxpool_percentage'] = []
     lr = learning_rate
 
-    print
+ 
     for irun in range(nrun):
         
         print(f'\n# ============================================= #')
         print(f'Run: {irun}\n')
         
+        # Usa seed diverso per ogni run, ma riproducibile
+        run_seed = seed + irun
+        print(f'Seed: {run_seed}')
+        np.random.seed(run_seed)
+        tf.random.set_seed(run_seed)
 
         # ============================================= #
         # hyperparameters selection
@@ -437,7 +376,7 @@ def train_model(train_samples, train_phenotypes, outdir,
         #### Learning Rate ####     
         if learning_rate is None:
             lr = 10 ** np.random.uniform(-3, -2) # random choice 
-            config['learning_rate'].append(lr)
+        config['learning_rate'].append(lr)
 
         #### Number of filters ####
         # choose number of filters for this run
@@ -509,6 +448,8 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     # the top 3 performing networks
     model_sorted_idx = np.argsort(accuracies)[::-1][:3]
+    best_sorted_indices = np.argsort(accuracies)[::-1]
+    
     best_3_nets = [w_store[int(i)] for i in model_sorted_idx if int(i) in w_store]
     #print(f"Best model found in w_store: {best_3_nets}")
     if not best_3_nets:
@@ -537,8 +478,12 @@ def train_model(train_samples, train_phenotypes, outdir,
         'best_model_index': best_accuracy_idx,
         'config': config,
         'scaler': z_scaler,
-        'n_classes': n_classes
+        'n_classes': n_classes,
+        'model_sorted_idx': best_sorted_indices,
+        'y_labels_resampled': y_train_resampled, 
+        'resampled' : resampled
     }
+
 
     if (valid_samples is not None) and (w_cons is not None):
         maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
@@ -548,25 +493,22 @@ def train_model(train_samples, train_phenotypes, outdir,
             results['filter_tau'] = tau
 
         else:
-            filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
+            #print(f'valid_samples: {valid_samples}')
+            valid_no_labels = []
+            for df in valid_samples:
+                valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
+                
+            #print(f'\nafter valid_no_labels: {valid_no_labels}')    
+            filter_diff = get_filters_classification(w_cons, z_scaler, valid_no_labels,
                                                      valid_phenotypes, maxpool_percentage)
             results['filter_diff'] = filter_diff
 
-    #hy_par_choice = ''
-    #for rank, idx in enumerate(model_sorted_idx):
-    #    nf = config['nfilter'][idx]
-    #    mp = config['maxpool_percentage'][idx]
-    #    
-    #    hy_par_choice += f"Model {rank+1}: {nf} filters, max-pooling {mp}%\n"
-    #    print(f"Model {rank+1}: {nf} filters, max-pooling {mp}%")
-    #hy_par_choice += f"\n"
-
     
-    return results #, hy_par_choice
+    return results 
 
 
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
-                k, dropout, dropout_p, regression, n_classes, lr=0.01):
+                k, dropout, dropout_p, regression, n_classes, lr=0.01,seed=42):
     """ Builds the neural network architecture """
 
     # the input layer
@@ -577,7 +519,7 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
     conv = layers.Conv1D(filters=nfilter,
                          kernel_size=1,
                          activation='relu',
-                         kernel_initializer=initializers.RandomUniform(),
+                         kernel_initializer=initializers.RandomUniform(seed=seed),
                          kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2), #reguarization
                          name='conv1')(data_input)
 
@@ -597,13 +539,13 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
     if not regression:
         output = layers.Dense(units=n_classes, # one node for each class
                               activation='softmax',
-                              kernel_initializer=initializers.RandomUniform(),
+                              kernel_initializer=initializers.RandomUniform(seed=seed),
                               kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2),
                               name='output')(pooled)
     else:
         output = layers.Dense(units=1,
                               activation='linear',
-                              kernel_initializer=initializers.RandomUniform(),
+                              kernel_initializer=initializers.RandomUniform(seed=seed),
                               kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2),
                               name='output')(pooled)
     model = keras.Model(inputs=data_input, outputs=output)

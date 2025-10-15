@@ -10,8 +10,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import copy
-from cellCnn.downsample import random_subsample, kmeans_subsample, outlier_subsample
-from cellCnn.downsample import weighted_subsample
+from cellCnn.downsample_new_unfixed import random_subsample, kmeans_subsample, outlier_subsample
+from cellCnn.downsample_new_unfixed import weighted_subsample
 import sklearn.utils as sku
 from sklearn.metrics.pairwise import pairwise_kernels
 from scipy.cluster.hierarchy import linkage
@@ -197,7 +197,7 @@ def filter_per_class(X, y, ylabel):
     return X[np.where(y == ylabel)]
 
 
-def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False):
+def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False, seed = 42):
     nmark = X.shape[1]
     shape = (nsubsets, nmark, ncell_per_subset)
     Xres = np.zeros(shape)
@@ -206,11 +206,11 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False):
         for i in range(nsubsets):
 
             if ncell_per_subset > X.shape[0]: # if number of cell_per_sample is higher than the total number of cells in the sample, replacement is performed 
-                X_i = random_subsample(X, ncell_per_subset, True)
+                X_i= random_subsample(X, ncell_per_subset, True, seed = seed + i + 1)
             else:
-                X_i = random_subsample(X, ncell_per_subset, False)
+                X_i = random_subsample(X, ncell_per_subset, False, seed = seed + i + 1)
 
-            
+            #print(f'\nBefore: {X_i}')
             Xres[i] = X_i.T
     else:
         for i in range(nsubsets):
@@ -219,32 +219,50 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False):
             Xres[i] = X_i.T
     return Xres
 
+    
+def filter_per_class(X, y, ylabel):
+    return X[np.where(y == ylabel)]
 
 def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
-                     per_sample=False, k_init=False):
+                     per_sample=False, k_init=False, seed = 42):
     S = dict()
     n_out = len(np.unique(sample_id))
-    #print(f'X: {X}\n')
+
     for ylabel in range(n_out):
         X_i = filter_per_class(X, sample_id, ylabel)
-        
+        #print(f'Before{X_i}')
         if per_sample:
+            samples = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
+            S[ylabel] = samples
             
-            S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init)
         else:
             n = nsubsets[pheno_map[ylabel]]
-            S[ylabel] = per_sample_subsets(X_i, n, ncell, k_init)
-
+            samples = per_sample_subsets(X_i,  n, ncell, k_init, seed = seed)
+            S[ylabel] = samples
+            
     # mix them
     data_list, y_list = [], []
+    
     for y_i, x_i in S.items():
-        data_list.append(x_i)
-        print(x_i)
-        y_list.append(pheno_map[y_i] * np.ones(x_i.shape[0], dtype=int))
-
+        inside_data_list, inside_y_list = [], []  
+        
+        for element in x_i:
+            
+            if 1 in element[-1]:
+                inside_y_list.append(1)
+            else:
+                inside_y_list.append(0)
+                
+            inside_data_list.append(element[:-1])
+            
+        data_list.append(inside_data_list)
+        y_list.append(inside_y_list)
+        
     Xt = np.vstack(data_list)
     yt = np.hstack(y_list)
-    Xt, yt = sku.shuffle(Xt, yt)
+    
+    Xt, yt = sku.shuffle(Xt, yt, random_state = seed)
+    #print(f'\nyt: {yt}\n')
     return Xt, yt
 
 
@@ -283,6 +301,7 @@ def generate_biased_subsets(X, pheno_map, sample_id, x_ctrl, nsubset_ctrl, nsubs
     Xt = np.vstack(data_list)
     yt = np.hstack(y_list)
     Xt, yt = sku.shuffle(Xt, yt)
+    
     return Xt, yt
 
 

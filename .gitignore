@@ -1,31 +1,30 @@
-# Ignora i checkpoint di Jupyter
+# Ignore Jupyter checkpoints
 .ipynb_checkpoints/
 
-# Ignora cache Python
+# Ignore cache Python
 __pycache__/
 *.pyc
 
-# Ignora file temporanei
+# Ignore temp files
 *.log
 *.tmp
 *.rar
 *.txt
 *.zip
 
-# Ignora la cartella dei dataset
+# Ignore datasets folder
 B-ALL_Datasets/
 
+
+# Ignore not useful folders
+Not_useful_anymore/
 Projects_Backup/
-CSNN/
-Code_trial_1/
-experiment/
 
-predictions_list.json
-results_list.json
-Dataset_Elaboration_Class-Copy1.ipynb
-
+# Ignore files in CellCNN folder
 CellCNN/__pycache__/
 CellCNN/.ipynb_checkpoints/
+CellCNN/not/
+CellCNN/resampling_rework.ipynb
 
-CellCNN/CV_small_dataset.ipynb
-CellCNN/Elaborate_bigger_datasetsCellCNN.ipynb
+CellCNN/results/.ipynb_checkpoints/
+CellCNN/results/02-10-25

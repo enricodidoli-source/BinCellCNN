@@ -14,9 +14,10 @@ from sklearn.metrics.pairwise import pairwise_distances
 logger = logging.getLogger(__name__)
 
 
-def random_subsample(X, target_nobs, replace=True):
+def random_subsample(X, target_nobs, replace=True, seed = 42):
     """ Draws subsets of cells uniformly at random. """
-
+    np.random.seed(seed)
+    
     nobs = X.shape[0]
     if (not replace) and (nobs <= target_nobs):
         return X

@@ -18,6 +18,7 @@ def random_subsample(X, target_nobs, replace=True, seed = 42):
     """ Draws subsets of cells uniformly at random. """
     #print(f'cells_labels: {cells_labels}')
 
+    
     # IMPOSTA IL SEED - questo era il problema principale!
     np.random.seed(seed)
     

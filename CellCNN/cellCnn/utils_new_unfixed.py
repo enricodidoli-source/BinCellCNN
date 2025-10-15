@@ -228,27 +228,24 @@ def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
     S = dict()
     n_out = len(np.unique(sample_id))
 
-    for ylabel in range(n_out):
-        X_i = filter_per_class(X, sample_id, ylabel)
-        #print(f'Before{X_i}')
-        if per_sample:
-            samples = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
-            S[ylabel] = samples
+    scaled_datasets = []
+
+    for i in range(n_out):
+        dataset_restored = []
+        for idx, element in enumerate(sample_id):
             
-        else:
-            n = nsubsets[pheno_map[ylabel]]
-            samples = per_sample_subsets(X_i,  n, ncell, k_init, seed = seed)
-            S[ylabel] = samples
-            
-    # mix them
+            if element == i:
+                dataset_restored.append(X[idx])
+        
+        S[i] = [np.array(dataset_restored).T]
+
     data_list, y_list = [], []
     
     for y_i, x_i in S.items():
         inside_data_list, inside_y_list = [], []  
-        #print(f'\nBefore \n {x_i[0]}')
+ 
         
         for element in x_i:
-            
             if 1 in element[-1]:
                 inside_y_list.append(1)
             else:
@@ -261,9 +258,9 @@ def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
         
     Xt = np.vstack(data_list)
     yt = np.hstack(y_list)
-    
+
     Xt, yt = sku.shuffle(Xt, yt, random_state = seed)
-    #print(f'\nyt: {yt}\n')
+    
     return Xt, yt
 
 

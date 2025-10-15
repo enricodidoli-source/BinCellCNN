@@ -243,29 +243,23 @@ def extract_cells_labels(dataset):
     return dataset_without_labels, cells_labels
 
 def data_transformation(dataset):
-        #print(f"before: {dataset}")
-        
-        # Estrai l'ultimo elemento di ogni riga
-        dataset_labels = dataset[:, -1]  # shape: (n_righe,)
-        dataset_labels = dataset_labels.astype(int)
-        #print(f"\nlabels: {dataset_labels}")
-        # Rimuovi l'ultima colonna da X
+
+        # Copy the 'IsBlast' column
+        dataset_labels = dataset[:, -1].copy() # shape: (n_righe,)
+        dataset_labels = dataset_labels.astype(int) # convert data in integers
+
+        # Remove the 'IsBlast' column to not be included in the transformation
         dataset_no_labels = dataset[:, :-1]  # shape: (n_righe, n_colonne - 1)
         
-        #print(f"\nremovd labels: {dataset_no_labels}")
-        
-        z_scaler = StandardScaler(with_mean=True, with_std=True)
-        z_scaler.fit(dataset_no_labels)
+        z_scaler = StandardScaler(with_mean=True, with_std=True) 
+        z_scaler.fit(dataset_no_labels) #scale data
 
-        
         transformed_dataset_no_labels = z_scaler.transform(dataset_no_labels)
-        
-        #print(f"\nafter transformation: {transformed_dataset_no_labels}")
 
+        #append the 'IsBlast' column    
         dataset_after = np.column_stack([transformed_dataset_no_labels, dataset_labels])
-        #print(f"\nfinal: {dataset_after}")
+        
         return dataset_after, z_scaler
-
 
 def train_model(train_samples, train_phenotypes, outdir,
                 valid_samples=None, valid_phenotypes=None, generate_valid_set=True,
@@ -283,8 +277,9 @@ def train_model(train_samples, train_phenotypes, outdir,
     
     """ Performs a CellCnn analysis """
 
-    if maxpool_percentages is None:
+    if maxpool_percentages is None: 
         maxpool_percentages = [0.01, 1., 5., 20., 100.]
+        
     if nfilter_choice is None:
         nfilter_choice = list(range(3, 10))
 
@@ -296,128 +291,59 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     # copy the list of samples so that they are not modified in place
     train_samples = copy.deepcopy(train_samples)
-    if valid_samples is not None:
-        valid_samples = copy.deepcopy(valid_samples)
+    valid_samples = copy.deepcopy(valid_samples)
 
     # merge all input samples (X_train, X_valid)
     # and generate an identifier for each of them (train_id, valid_id)
     train_sample_ids = np.arange(len(train_phenotypes))
-
-    #train_samples, train_cells_lables = extract_cells_labels(train_samples)
-    
-    #valid_samples, valid_cells_lables = extract_cells_labels(valid_samples)
-    
     X_train, id_train = combine_samples(train_samples, train_sample_ids)
-    #print(f'X_triain: {X_train}')
+
     valid_sample_ids = np.arange(len(valid_phenotypes))
     X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
 
-    if quant_normed:
-        z_scaler = StandardScaler(with_mean=True, with_std=False)
-        z_scaler.fit(0.5 * np.ones((1, X_train.shape[1])))
-        X_train = z_scaler.transform(X_train)
-    elif scale:
-        X_train, z_scaler = data_transformation(X_train)
-        '''
-        print(f"before: {X_train}")
-        
-        # Estrai l'ultimo elemento di ogni riga
-        X_train_labels = X_train[:, -1]  # shape: (n_righe,)
-        X_train_labels = X_train_labels.astype(int)
-        print(f"\nlabels: {X_train_labels}")
-        # Rimuovi l'ultima colonna da X
-        X_train_no_labels = X_train[:, :-1]  # shape: (n_righe, n_colonne - 1)
-        
-        print(f"\nremovd labels: {X_train_no_labels}")
-        
-        z_scaler = StandardScaler(with_mean=True, with_std=True)
-        z_scaler.fit(X_train_no_labels)
+    # scale data without including 'IsBlast' column
+    X_train, z_scaler = data_transformation(X_train)
 
-        
-        transformed_X_train_no_labels = z_scaler.transform(X_train_no_labels)
+    train_phenotypes = np.asarray(train_phenotypes) # directly converts the list in array
 
-        print(f"\nafter transformation: {transformed_X_train_no_labels}")
-
-        X_train = np.column_stack([transformed_X_train_no_labels, X_train_labels])
-        print(f"\nfinal: {X_train}")
-        '''
-    else:
-        z_scaler = None
-
-    X_train, id_train = shuffle(X_train, id_train,  random_state=seed)
-    train_phenotypes = np.asarray(train_phenotypes)
-    #print(f'id_train: {id_train}')
     # an array containing the phenotype for each single cell
     y_train = train_phenotypes[id_train]
 
-    if (valid_samples is not None) or generate_valid_set:
-        
-        if scale:
-            X_valid, z_scaler = data_transformation(X_valid)
+    # same procedure as before, for validaion set
+    X_valid, z_scaler = data_transformation(X_valid)
 
-        X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
-        valid_phenotypes = np.asarray(valid_phenotypes)
-        y_valid = valid_phenotypes[id_valid]
+    #X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
+    valid_phenotypes = np.asarray(valid_phenotypes)
+    y_valid = valid_phenotypes[id_valid]
 
     # number of measured markers
-    nmark = X_train.shape[1] - 1
+    nmark = X_train.shape[1] - 1 # -1 because we do not include 'IsBlast' column
 
     # generate multi-cell inputs
     logger.info("Generating multi-cell inputs...")
 
- 
-    if subset_selection != 'outlier':
-    # generate 'nsubset' multi-cell inputs per input sample
-        if per_sample:
-            #print(f'ok_ {train_phenotypes}')
-            X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
+    # reconstruct dataset after scaling and remove 'IsBlast' column
+    X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
                                           nsubset, ncell, per_sample,  seed=seed)
-            #print(f'\nAfterrrrrr \n {X_tr}\n')
-            if (valid_samples is not None) or generate_valid_set:
-                X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
+    X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
                                             nsubset, ncell, per_sample,  seed=seed)
-
-
+    
+    
     logger.info("Done.")
 
     # neural network configuration
     # batch size
-    
-    bs = 200
+    bs = int(len(train_samples)/10) # always turns in 10 weights ugrades per epoch
 
     # keras needs (nbatch, ncell, nmark)
     X_tr = np.swapaxes(X_tr, 2, 1)
     X_v = np.swapaxes(X_v, 2, 1)
     n_classes = 1
-    print("=== BEFORE CATEGORICAL CONVERSION ===")
-    
-    print(f"y_tr type: {type(y_tr)}")
-    print(f"y_tr shape: {y_tr.shape}")
-    print(f"n_classes: {n_classes}")
 
-    if not regression:
-        if per_sample == True:
-            n_classes = len(np.unique(train_phenotypes))
-            y_tr = keras.utils.to_categorical(y_tr, n_classes)
-            y_v = keras.utils.to_categorical(y_v, n_classes)
-        else:
-            
-            # Calcola n_classes dai dati effettivi che stai usando
-            n_classes = len(np.unique(np.concatenate([y_tr, y_v])))
-            print(f"Calculated n_classes from actual data: {n_classes}")
-            
-            y_tr = keras.utils.to_categorical(y_tr, n_classes)
-            y_v = keras.utils.to_categorical(y_v, n_classes)
-           
-                
-    print("=== AFTER CATEGORICAL CONVERSION ===")
-    print(f"x_tr: {X_tr.shape}")
-    print(f"y_tr type: {type(y_tr)}")
-    print(f"y_tr shape: {y_tr.shape}")
-    #print(f"y_v: {y_v}")
-    print(f"y_v type: {type(y_v)}")
-    print(f"y_v shape: {y_v.shape}")
-    
+    n_classes = len(np.unique(train_phenotypes))
+    y_tr = keras.utils.to_categorical(y_tr, n_classes)
+    y_v = keras.utils.to_categorical(y_v, n_classes)        
+
     # train some neural networks with different parameter configurations
     accuracies = np.zeros(nrun)
     w_store = dict()
@@ -429,11 +355,11 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     
     for irun in range(nrun):
-        
         print(f'\n# ============================================= #')
         print(f'Run: {irun}\n')
+        
         # Usa seed diverso per ogni run, ma riproducibile
-        run_seed = seed + irun * 10  # ← CHIAVE!
+        run_seed = seed + irun
         print(f'Seed: {run_seed}')
         np.random.seed(run_seed)
         tf.random.set_seed(run_seed)
@@ -448,8 +374,7 @@ def train_model(train_samples, train_phenotypes, outdir,
         #### Learning Rate ####     
         if learning_rate is None:
             learning_rate = [0.001, 0.01, 0.1]
-            
-            #lr = 10 ** np.random.uniform(-3, -2) # random choice 
+        
         lr = np.random.choice(learning_rate)
         
         config['learning_rate'].append(lr)
@@ -464,7 +389,6 @@ def train_model(train_samples, train_phenotypes, outdir,
         # choose number of cells pooled for this run
         
         mp = np.random.choice(maxpool_percentages)
-        #mp = maxpool_percentages[irun % len(maxpool_percentages)]
         config['maxpool_percentage'].append(mp)
         k = max(1, int(mp / 100. * ncell))
         logger.info(f"Cells pooled: {k}")
@@ -477,90 +401,45 @@ def train_model(train_samples, train_phenotypes, outdir,
                             coeff_l1, coeff_l2, k,
                             dropout, dropout_p, regression, n_classes, lr)
 
-
-        # Aggiungi questi controlli di debug dopo la generazione dei subset
-        print(f"X_tr shape: {X_tr.shape}")
-        print(f"y_tr shape: {y_tr.shape}")
-        print(f"X_v shape: {X_v.shape}")
-        print(f"y_v shape: {y_v.shape}")
-        print(f"Unique values in y_tr: {np.unique(y_tr)}")
-
         filepath = os.path.join(outdir, f"nnet_run_{irun}.weights.h5")
         try:
         #for i in range(1):
-
-            # Abilita eager execution per debug migliore
-            import tensorflow as tf
-            #tf.config.run_functions_eagerly(True)
-            
             # Ricompila il modello
             model.compile(optimizer=model.optimizer, 
                           loss=model.loss, 
                           metrics=model.metrics,
                           run_eagerly=True)
+            
             #### weights saving ####
-            if not regression:
-                # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
-                # (save_best_only tells to the function to save only the est result)
-                check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
+            # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
+            # (save_best_only tells to the function to save only the est result)
+            check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
                                   mode='auto', save_weights_only=True) 
                 
-                # if the val_loss metrcis does not improve for 5 epochs, the training stops
-                earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
+            # if the val_loss metrcis does not improve for 5 epochs, the training stops
+            earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
                 
-                # keras.fit() trains the model
-                model.fit(X_tr, y_tr,
+            # keras.fit() trains the model
+            model.fit(X_tr, y_tr,
                           epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
                           validation_data=(X_v, y_v), verbose=verbose)
-            '''
-            else:
-                check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
-                                  mode='auto', save_weights_only=True)
-                earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
-                
-
-                model.fit(X_tr, y_tr,
-                          epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
-                          validation_data=(X_v, y_v), verbose=verbose)
-            '''
             
             # load the model from the epoch with highest validation accuracy
             model.load_weights(filepath)
 
-            if not regression:
-                    
-                if per_sample == True:
-                        eval_result = model.evaluate(X_v, y_v) # test the model on the validation set
-                            # Gestisci sia il caso di singolo valore che di lista/tupla
-                        if isinstance(eval_result, (list, tuple)):
-                            valid_metric = eval_result[-1]  # Prendi l'accuracy (ultimo valore)
-                        else:
-                            # Se è un singolo valore float
-                            valid_metric = eval_result
-                        
-                        logger.info(f"Best validation accuracy: {valid_metric:.2f}")
-                        accuracies[irun] = valid_metric
-                else:
-                    eval_result = model.evaluate(X_v, y_v, verbose=0)
-                    print(f"Evaluation result: {eval_result}, type: {type(eval_result)}")
-                    
-                    # Gestisci sia il caso di singolo valore che di lista/tupla
-                    if isinstance(eval_result, (list, tuple)) and len(eval_result) > 1:
-                        valid_metric = eval_result[-1]  # Prendi l'accuracy (ultimo valore)
-                    else:
-                        # Se è un singolo valore o una lista con un solo elemento
-                        valid_metric = eval_result if isinstance(eval_result, (int, float)) else eval_result[0]
-                    
-                    logger.info(f"Best validation metric: {valid_metric:.2f}")
-                    accuracies[irun] = valid_metric
-                                    
 
+            eval_result = model.evaluate(X_v, y_v) # test the model on the validation set
+            
+            # Gestisci sia il caso di singolo valore che di lista/tupla
+            if isinstance(eval_result, (list, tuple)):
+                 valid_metric = eval_result[-1]  # Prendi l'accuracy (ultimo valore)
             else:
-                train_metric = model.evaluate(X_tr, y_tr, batch_size=bs) 
-                logger.info(f"Best train loss: {train_metric:.2f}")
-                valid_metric = model.evaluate(X_v, y_v, batch_size=bs)
-                logger.info(f"Best validation loss: {valid_metric:.2f}")
-                accuracies[irun] = - valid_metric
+                 # Se è un singolo valore float
+                 valid_metric = eval_result
+                        
+            logger.info(f"Best validation accuracy: {valid_metric:.2f}")
+            accuracies[irun] = valid_metric
+                
 
             # extract the network parameters
             w_store[irun] = model.get_weights()
@@ -574,7 +453,7 @@ def train_model(train_samples, train_phenotypes, outdir,
     best_sorted_indices = np.argsort(accuracies)[::-1]
     
     best_3_nets = [w_store[int(i)] for i in model_sorted_idx if int(i) in w_store]
-    #print(f"Best model found in w_store: {best_3_nets}")
+
     if not best_3_nets:
         raise RuntimeError(
             "No valid model founf in w_store. "
@@ -607,33 +486,16 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     if (valid_samples is not None) and (w_cons is not None):
         maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
-        if regression:
-            tau = get_filters_regression(w_cons, z_scaler, valid_samples, valid_phenotypes,
-                                         maxpool_percentage)
-            results['filter_tau'] = tau
 
-        else:
-            #print(f'valid_samples: {valid_samples}')
-            valid_no_labels = []
-            for df in valid_samples:
+        valid_no_labels = []
+        for df in valid_samples:
                 valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
                 
-            #print(f'\nafter valid_no_labels: {valid_no_labels}')    
-            filter_diff = get_filters_classification(w_cons, z_scaler, valid_no_labels,
+        filter_diff = get_filters_classification(w_cons, z_scaler, valid_no_labels,
                                                      valid_phenotypes, maxpool_percentage)
-            results['filter_diff'] = filter_diff
+        results['filter_diff'] = filter_diff
 
-    #hy_par_choice = ''
-    #for rank, idx in enumerate(model_sorted_idx):
-    #    nf = config['nfilter'][idx]
-    #    mp = config['maxpool_percentage'][idx]
-    #    
-    #    hy_par_choice += f"Model {rank+1}: {nf} filters, max-pooling {mp}%\n"
-    #    print(f"Model {rank+1}: {nf} filters, max-pooling {mp}%")
-    #hy_par_choice += f"\n"
-
-    
-    return results #, hy_par_choice
+    return results 
 
 
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
@@ -648,7 +510,7 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
     conv = layers.Conv1D(filters=nfilter,
                          kernel_size=1,
                          activation='relu',
-                         kernel_initializer=initializers.RandomUniform(),
+                         kernel_initializer=initializers.RandomUniform(seed=seed),
                          kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2), #reguarization
                          name='conv1')(data_input)
 

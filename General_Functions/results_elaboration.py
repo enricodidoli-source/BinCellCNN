@@ -6,15 +6,6 @@ import sys
 
 
 
-def remove_from_cache(files: list):
-    for file in files:
-        if file in sys.modules:
-            del sys.modules[file]
-            print(f"{file} rimosso dalla cache")
-        else:
-            print(f"{file} non trovato nella cache")
-
-
 def extract_hyper(configuration, best_models):
     
     trial_parameters = []
@@ -111,14 +102,6 @@ def phenotype_prediction(test_pred):
         else:
             pred_phenotypes.append(0)
     return pred_phenotypes
-
-def min_length(train_dataset):
-    min_l = np.e**20
-    for dataset in train_dataset:
-        lenght = len(dataset)
-        if lenght < min_l:
-            min_l = lenght
-    return min_l
 
 def default_serializer(obj):
     """ Let the results in numpy fomat being saved as .json file"""
