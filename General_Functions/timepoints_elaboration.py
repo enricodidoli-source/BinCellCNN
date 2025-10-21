@@ -156,7 +156,7 @@ def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, bl
 
     # mixed donors       
     for i, don in enumerate(mixed_donors_idx):
-        if i in range(set_division[0]):
+        if i in range(set_division[1]):
             train_donors_idx.append(mixed_donors[don])
         elif i in range(set_division[0], set_division[0] + set_division[1]):
             val_donors_idx.append(mixed_donors[don])
@@ -166,7 +166,7 @@ def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, bl
 
 
 def dataset_elaboration(multiple_donations, ALL_DATASETS, healthy_donors, blast_donors,
-                        mixed_donors, n_sub = 3, seed = 42):
+                        mixed_donors, n_sub = 3, seed = 42, set_division = [2,1,2]):
     """ Samples donors for Train, Validation and Test sets"""
     
     train_donors = []
@@ -184,7 +184,7 @@ def dataset_elaboration(multiple_donations, ALL_DATASETS, healthy_donors, blast_
 
     print(f'Seting Train, Validation and Test idx...')
     # just divide accoding to the sampled indexes
-    train_donors_idx, val_donors_idx, test_donors_idx = splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx)
+    train_donors_idx, val_donors_idx, test_donors_idx = splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx, set_division = set_division)
     print(train_donors_idx, val_donors_idx, test_donors_idx)
 
     return train_donors_idx, val_donors_idx, test_donors_idx

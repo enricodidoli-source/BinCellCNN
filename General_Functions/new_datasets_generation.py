@@ -44,12 +44,6 @@ def sample_cells_new_dataset(data, per_dataset, n_sub, seed, blast = True):
     # shuffle and divide the two datasets in chunks, from which extract final data
     data = data.sample(frac=1, random_state=seed).reset_index(drop=True)
 
-    '''
-    if blast:
-        print(f'blast: {len(data)}')
-    else:
-        print(f'healthy: {len(data)}')
-    '''
     tot_sub = len(per_dataset)
     
     remaining_sub = tot_sub
@@ -78,14 +72,20 @@ def sample_cells_new_dataset(data, per_dataset, n_sub, seed, blast = True):
                 
     return data_division
     
-def generate_new_datasets(donor_datasets_extracted, n_sub, n_cells, seed, log = False):
+def generate_new_datasets(donor_datasets_extracted, n_sub, n_cells, seed, per_perc = False, log = False, blast_perc = None):
     """ generates new datasets from multiple donations of the same donor """
     new_donor_datasets = []
     new_donor_y = []
-    
+    blast_per_dataset = []
+    np.random.seed(seed)
     blast_data = pd.DataFrame()
     healthy_data = pd.DataFrame()
-   
+
+    if blast_perc is None:
+        blast_percentages = [0.005, 0.01, 0.05, 0.1, 0.2] # blast percenteges
+    else:
+        blast_percentages = blast_perc
+        
     condition = check_dataset_types(donor_datasets_extracted, log = log)
     
     # aggregate healthy and blast data form donor cells
@@ -108,22 +108,47 @@ def generate_new_datasets(donor_datasets_extracted, n_sub, n_cells, seed, log = 
         
     if condition == 1:
         print(f'Condition: {condition}')
-        blast_percentages = [0.005, 0.01, 0.05] # blast percenteges 
-        blast_per_dataset = np.random.choice(blast_percentages, n_sub)  #chosed percenteges for each sub
-        blast_per_dataset = np.sort(blast_per_dataset * n_cells) #total number of cells 
-        
+
+        #blast percentages per subset generation
+        if not per_perc:
+            blast_per_dataset = np.random.choice(blast_percentages, n_sub)  #chosed percenteges for each sub
+             
+        else:
+            mod = len(blast_percentages)
+            rem = int(n_sub % mod)
+            n_times = int(n_sub / mod)
+
+            print(mod)
+            print(rem)
+            print(n_times)
+            if n_times != 0:
+                blast_per_dataset = blast_percentages * n_times
+                print(blast_per_dataset)
+                print(len(blast_per_dataset))
+                
+            if rem != 0:
+                
+                blast_per_dataset = blast_per_dataset + blast_percentages[:rem]
+                
+        blast_per_dataset = np.array(blast_per_dataset) * n_cells
+        print(f'Chosen # of blast cells: {blast_per_dataset}')
+        blast_per_dataset = np.sort(blast_per_dataset) #total number of cells
+        print(f'Chosen # of blast cells: {blast_per_dataset}')
         if log:
             print(f'Chosen # of blast cells: {blast_per_dataset}')
             print('Percentages of Blast cells : Done!')
-    
+        #print(b)
+        # healthy numer of cells retriving
         healthy_per_dataset = []
         for b_c in blast_per_dataset:
-            h_c = n_cells - b_c
+            h_c = n_cells - int(b_c)
             healthy_per_dataset.append(h_c)
             if log:
                 print(f'New Generated Dataset {i}: healthy = {h_c}, blast = {b_c}')
                 
         healthy_per_dataset = healthy_per_dataset + [n_cells]*n_sub # divisions
+
+        # sampling section
         blast_data_division = sample_cells_new_dataset(blast_data, blast_per_dataset, n_sub, seed, blast = True)
         healthy_data_division = sample_cells_new_dataset(healthy_data, healthy_per_dataset, n_sub, seed, blast = False)
 
@@ -136,6 +161,7 @@ def generate_new_datasets(donor_datasets_extracted, n_sub, n_cells, seed, log = 
         for i in range(n_sub, n_sub*2):
             new_donor_datasets.append(healthy_data_division[i])
             new_donor_y.append(0)
+            
     else:
         print(f'Condition: {condition}')
         healthy_per_dataset = [n_cells]*n_sub
@@ -147,7 +173,8 @@ def generate_new_datasets(donor_datasets_extracted, n_sub, n_cells, seed, log = 
     return new_donor_datasets, new_donor_y
 
 
-def splitting_and_dataset_elaboration(train_datasets_extracted, val_datasets_extracted, test_datasets_extracted, n_sub, n_cells, seed):
+def splitting_and_dataset_elaboration(train_datasets_extracted, val_datasets_extracted, test_datasets_extracted, n_sub, n_cells, seed, 
+                                      cv = False, per_perc = False, log = False, blast_perc = None):
     new_train_datasets = []
     new_train_y = []
     
@@ -160,13 +187,23 @@ def splitting_and_dataset_elaboration(train_datasets_extracted, val_datasets_ext
     print(f'New training datasets creation...')
     print(len(train_datasets_extracted))
     print(len(train_datasets_extracted[0]))
+
+    if cv:
+        cv_train = []
+        cv_train_y = []
+        cv_val = []
+        cv_val_y = []
+        
     for donor_datasets in train_datasets_extracted:
         print(f'\nNew Donor')
         print(len(donor_datasets))
-        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed)
-        
+        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed, per_perc = per_perc, log = log, blast_perc = blast_perc)
         new_train_datasets += gen_results[0]
         new_train_y += gen_results[1]
+
+        if cv:
+            cv_train.append(gen_results[0])
+            cv_train_y.append(gen_results[1])
         seed += 1 
     print(new_train_y )
     print(f'Done!\n')
@@ -176,9 +213,14 @@ def splitting_and_dataset_elaboration(train_datasets_extracted, val_datasets_ext
     for donor_datasets in val_datasets_extracted:
         print(f'\nNew Donor')
         
-        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed)
+        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed, per_perc = per_perc, log = log, blast_perc = blast_perc)
         new_val_datasets += gen_results[0]
         new_val_y += gen_results[1]
+
+            
+        if cv:
+            cv_val.append(gen_results[0])
+            cv_val_y.append(gen_results[1])
         seed += 1 
     print(new_val_y )
     print(f'Done!\n')
@@ -189,14 +231,17 @@ def splitting_and_dataset_elaboration(train_datasets_extracted, val_datasets_ext
         print(f'\nNew Donor')
 
 
-        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed)
+        gen_results = generate_new_datasets(donor_datasets, n_sub, n_cells, seed, per_perc = per_perc, log = log, blast_perc = blast_perc)
     
         new_test_datasets += gen_results[0]
         new_test_y += gen_results[1]
         seed += 1 
     print(new_test_y )
     print(f'Done!\n')
-    
+
+    if cv:
+        return cv_train, cv_train_y, cv_val, cv_val_y, new_test_datasets, new_test_y
+        
     return new_train_datasets, new_train_y, new_val_datasets, new_val_y, new_test_datasets, new_test_y
 '========================================================================================================================================'
 

@@ -28,3 +28,9 @@ CellCNN/resampling_rework.ipynb
 
 CellCNN/results/.ipynb_checkpoints/
 CellCNN/results/02-10-25
+CellCNN/results/15-10-25
+CellCNN/results/old
+
+# Ignore files in CSNN folder
+CSNN/entire_code
+CSNN/experiment

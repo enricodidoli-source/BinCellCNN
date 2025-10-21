@@ -118,7 +118,7 @@ class CellCnn(object):
         self.model_sorted_idx = None
         self.seed = seed
         self.resampled =  None
-
+        
     def fit(self, train_samples, train_phenotypes, outdir, valid_samples=None,
             valid_phenotypes=None, generate_valid_set=True):
 
@@ -258,6 +258,7 @@ def train_model(train_samples, train_phenotypes, outdir,
                 learning_rate=None, coeff_l1=0, coeff_l2=1e-4, dropout='auto', dropout_p=.5,
                 max_epochs=20, patience=5,
                 dendrogram_cutoff=0.4, accur_thres=.95, verbose=1, seed = 42):
+    
     import tensorflow as tf
     """ Performs a CellCnn analysis """
     # Imposta i seed GLOBALI all'inizio
@@ -297,7 +298,7 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     X_train, id_train = shuffle(X_train, id_train,  random_state=seed)
     train_phenotypes = np.asarray(train_phenotypes)
-    #print(f'id_train: {id_train}')
+    
     # an array containing the phenotype for each single cell
     y_train = train_phenotypes[id_train]
 
@@ -376,11 +377,15 @@ def train_model(train_samples, train_phenotypes, outdir,
         #### Learning Rate ####     
         if learning_rate is None:
             lr = 10 ** np.random.uniform(-3, -2) # random choice 
+        else:
+            lr = np.random.choice(learning_rate)
         config['learning_rate'].append(lr)
 
         #### Number of filters ####
         # choose number of filters for this run
         nfilter = np.random.choice(nfilter_choice)
+        print(f'\n filters: {nfilter}\n')
+        
         config['nfilter'].append(nfilter)
         logger.info(f"Number of filters: {nfilter}")
 
@@ -399,7 +404,8 @@ def train_model(train_samples, train_phenotypes, outdir,
                             dropout, dropout_p, regression, n_classes, lr)
 
         filepath = os.path.join(outdir, f"nnet_run_{irun}.weights.h5")
-        try:
+        #try:
+        for _ in range(1):
             #### weights saving ####
             if not regression:
                 # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
@@ -441,11 +447,11 @@ def train_model(train_samples, train_phenotypes, outdir,
 
             # extract the network parameters
             w_store[irun] = model.get_weights()
-
+        '''
         except Exception as e:
             sys.stderr.write('An exception was raised during training the network.\n')
             sys.stderr.write(str(e) + '\n')
-
+        '''
     # the top 3 performing networks
     model_sorted_idx = np.argsort(accuracies)[::-1][:3]
     best_sorted_indices = np.argsort(accuracies)[::-1]
@@ -510,7 +516,8 @@ def train_model(train_samples, train_phenotypes, outdir,
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
                 k, dropout, dropout_p, regression, n_classes, lr=0.01,seed=42):
     """ Builds the neural network architecture """
-
+     
+    print(f'\n filters: {nfilter}\n')
     # the input layer
     data_input = keras.Input(shape=(ncell, nmark))  # returns a vector of matrices
                                                     # each element is a matrix of ncell x nmark

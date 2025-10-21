@@ -221,54 +221,55 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False, seed = 42):
 
 
 def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
-                     per_sample=False, k_init=False, seed = 42):
+                     per_sample=False, k_init=False, seed = 42, labels = True):
+    
     S = dict()
     n_out = len(np.unique(sample_id))
     
     for ylabel in range(n_out):
         X_i = filter_per_class(X, sample_id, ylabel)
-        
-        if per_sample:
-            
-            S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
-        else:
-            n = nsubsets[pheno_map[ylabel]]
-            S[ylabel] = per_sample_subsets(X_i, n, ncell, k_init, seed = seed)
+
+        S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
 
     # mix them
-    
     true_labels_list = []
     data_list, y_list = [], []
     for y_i, x_i in S.items():
-        new_x_i = []
-        true_labels = []
-        for element in x_i:
-            new_x_i.append(element[:-1])
-
-            """log for true labels"""
-            counter = 0
-            for lab in element[-1]:
-                if int(lab) == 1:
-                    counter += 1
-            
-            if counter > 0:
-                true_labels.append(1)
-            else:
-                true_labels.append(0)
-
-        true_labels_list.append(np.array(true_labels))
         
-        data_list.append(new_x_i)
+        if labels:
+            new_x_i = []
+            true_labels = []
+            for element in x_i:
+                new_x_i.append(element[:-1])
+    
+                """log for true labels"""
+                counter = 0
+                for lab in element[-1]:
+                    if int(lab) == 1:
+                        counter += 1
+                
+                if counter > 0:
+                    true_labels.append(1)
+                else:
+                    true_labels.append(0)
+    
+            true_labels_list.append(np.array(true_labels))
+            data_list.append(new_x_i)
+        else:
+            data_list.append(x_i)
+        
         y_list.append(pheno_map[y_i] * np.ones(x_i.shape[0], dtype=int))
     y_train_resampled = y_list.copy()
-    #print(f'y_list: {y_list}')
-    #print(f'true_labels: {true_labels_list}')
-        
+
+    
     Xt = np.vstack(data_list)
     yt = np.hstack(y_list)
     Xt, yt = sku.shuffle(Xt, yt,  random_state = seed)
-    return Xt, yt, S, y_train_resampled
-
+    
+    if labels:
+        return Xt, yt, S, y_train_resampled
+        
+    return Xt, yt
 
 def per_sample_biased_subsets(X, x_ctrl, nsubsets, ncell_final, to_keep, ratio_biased):
     nmark = X.shape[1]
