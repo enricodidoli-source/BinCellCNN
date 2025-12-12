@@ -22,7 +22,7 @@ from old_cellCnn.utils import mkdir_p
 
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers, initializers, regularizers, optimizers, callbacks
+from tensorflow.keras import layers, initializers, regularizers, optimizers, callbacks, metrics
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +230,8 @@ class CellCnn(object):
             
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
-def data_transformation(dataset):
-
+def data_transformation(dataset, labels = False):
+    if labels:
         # Copy the 'IsBlast' column
         dataset_labels = dataset[:, -1].copy()  # shape: (n_righe,)
         dataset_labels = dataset_labels.astype(int) # convert data in integers
@@ -246,9 +246,17 @@ def data_transformation(dataset):
 
         #append the 'IsBlast' column    
         dataset_after = np.column_stack([transformed_dataset_no_labels, dataset_labels])
+   
         
-        return dataset_after, z_scaler
-    
+    else:
+        
+        z_scaler = StandardScaler(with_mean=True, with_std=True) 
+        z_scaler.fit(dataset) #scale data
+
+        dataset_after = z_scaler.transform(dataset)
+        
+    return dataset_after, z_scaler
+        
 
 def train_model(train_samples, train_phenotypes, outdir,
                 valid_samples=None, valid_phenotypes=None, generate_valid_set=True,
@@ -265,6 +273,13 @@ def train_model(train_samples, train_phenotypes, outdir,
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!
+
+    if len(train_samples[0].iloc[0]) == 12: # 12 because cells analyzed have 11 markers + cell label
+        print(f'There are labels. Labels set to True')
+        labels = True
+    else:
+        print(f'No labels detected. Labels set to False')
+        labels = False
     
     if maxpool_percentages is None:
         maxpool_percentages = [0.01, 1., 5., 20., 100.]
@@ -292,7 +307,7 @@ def train_model(train_samples, train_phenotypes, outdir,
     X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
 
     if scale:
-        X_train, z_scaler = data_transformation(X_train)
+        X_train, z_scaler = data_transformation(X_train, labels = labels)
     else:
         z_scaler = None
 
@@ -305,23 +320,26 @@ def train_model(train_samples, train_phenotypes, outdir,
     if (valid_samples is not None) or generate_valid_set:
         
         if scale:
-            X_valid, z_scaler = data_transformation(X_valid)
+            X_valid, z_scaler = data_transformation(X_valid, labels = labels)
 
         X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
         valid_phenotypes = np.asarray(valid_phenotypes)
         y_valid = valid_phenotypes[id_valid]
 
     # number of measured markers
-    nmark = X_train.shape[1] - 1
-
-
+    if labels:
+        nmark = X_train.shape[1] - 1
+    else:
+        nmark = X_train.shape[1]
     
     # generate multi-cell inputs
     logger.info("Generating multi-cell inputs...")
 
     if subset_selection != 'outlier':
         # generate 'nsubset' multi-cell inputs per input sample
-        if per_sample:
+        
+        if labels:
+            print('okkkk')
             print(train_phenotypes)
             X_tr, y_tr, S, y_train_resampled = generate_subsets(X_train, train_phenotypes, id_train,
                                           nsubset, ncell, per_sample, seed=seed)
@@ -329,9 +347,18 @@ def train_model(train_samples, train_phenotypes, outdir,
             resampled = S.copy()
             if (valid_samples is not None) or generate_valid_set:
                 X_v, y_v, S, y_valid_resampled = generate_subsets(X_valid, valid_phenotypes, id_valid,
-                                            nsubset, ncell, per_sample, seed=seed)
-                
+                                            nsubset, ncell, per_sample, seed=seed + 1000)
+        else:
+            print(train_phenotypes)
+            X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
+                                          nsubset, ncell, per_sample, seed=seed, labels = labels)
 
+            
+            if (valid_samples is not None) or generate_valid_set:
+                X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
+                                            nsubset, ncell, per_sample, seed=seed + 1000, labels = labels)
+        print(len(X_v[0]))
+        print(len(X_tr[0]))
     # neural network configuration
     # batch size
     
@@ -435,8 +462,9 @@ def train_model(train_samples, train_phenotypes, outdir,
 
             if not regression:
                 valid_metric = model.evaluate(X_v, y_v)[-1] # test the model on the validation set
-                logger.info(f"Best validation accuracy: {valid_metric:.2f}")
-                accuracies[irun] = valid_metric
+                print(valid_metric)
+                logger.info(f"Best validation accuracy: {valid_metric[1]:.2f}")
+                accuracies[irun] = valid_metric[1]
 
             else:
                 train_metric = model.evaluate(X_tr, y_tr, batch_size=bs) 
@@ -485,10 +513,12 @@ def train_model(train_samples, train_phenotypes, outdir,
         'config': config,
         'scaler': z_scaler,
         'n_classes': n_classes,
-        'model_sorted_idx': best_sorted_indices,
-        'y_labels_resampled': y_train_resampled, 
-        'resampled' : resampled
+        'model_sorted_idx': best_sorted_indices
     }
+    
+    if labels:
+        results['y_labels_resampled'] = y_train_resampled
+        results['resampled'] = esampled
 
 
     if (valid_samples is not None) and (w_cons is not None):
@@ -500,16 +530,19 @@ def train_model(train_samples, train_phenotypes, outdir,
 
         else:
             #print(f'valid_samples: {valid_samples}')
-            valid_no_labels = []
-            for df in valid_samples:
-                valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
+            if labels:
+                
+                valid_no_labels = []
+                for df in valid_samples:
+                    valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
+                valid_samples = valid_no_labels
+
                 
             #print(f'\nafter valid_no_labels: {valid_no_labels}')    
-            filter_diff = get_filters_classification(w_cons, z_scaler, valid_no_labels,
+            filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
                                                      valid_phenotypes, maxpool_percentage)
             results['filter_diff'] = filter_diff
 
-    
     return results 
 
 
@@ -555,12 +588,15 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
                               kernel_initializer=initializers.RandomUniform(seed=seed),
                               kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2),
                               name='output')(pooled)
+        
     model = keras.Model(inputs=data_input, outputs=output)
 
     if not regression:
+        f1_score = keras.metrics.F1Score(average=None, threshold=None, name="f1_score", dtype=None)
+        
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='categorical_crossentropy',
-                      metrics=['accuracy'])
+                      metrics = f1_score)#['accuracy'])
     else:
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='mean_squared_error')

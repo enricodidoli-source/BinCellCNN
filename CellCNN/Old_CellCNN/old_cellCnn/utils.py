@@ -222,15 +222,21 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False, seed = 42):
 
 def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
                      per_sample=False, k_init=False, seed = 42, labels = True):
-    
+    print(X)
     S = dict()
     n_out = len(np.unique(sample_id))
+    print(f'n_out: {n_out}')
     
     for ylabel in range(n_out):
+        
         X_i = filter_per_class(X, sample_id, ylabel)
-
+        
+        print(f'X_i: {len(X_i)}')
         S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
 
+        print(f'resampled subsets per sample: {len(S[ylabel])}')
+        
+    print(f'resampled number: {len(S)}')
     # mix them
     true_labels_list = []
     data_list, y_list = [], []
