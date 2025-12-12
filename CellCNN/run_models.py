@@ -97,7 +97,7 @@ def trials_test_CellCNN(models_lists, test_datasets_no_labels):
 '========================================================================================================================================'
 
 def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, test_datasets_no_labels,
-                      n_cell = 10, max_epochs=5, nrun=1, seed = 42, hyper = None):
+                      n_cell = 10, nsubset = 50, max_epochs=5, nrun=1, seed = 42, hyper = None):
         
     if hyper is None:
             nfilter = [3,5,7,9]
@@ -108,7 +108,7 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, tes
     
     model = CellCnn(
         ncell = n_cell,            #200                        # Number of cells per multi-cell input (sampled from the 'patient' datasets)
-        nsubset = int(50),                                    # Total number of multi-cell inputs that will be generated per class (or sample and class)
+        nsubset = nsubset,                                    # Total number of multi-cell inputs that will be generated per class (or sample and class)
         per_sample = True,                                # For each sample, nsubset samples of ncell are performed
         nfilter_choice = nfilter,  #list(range(3,21)),                 # Range of possible number of filters
         maxpool_percentages = maxpool_p,    # list of k-percentage max_pooling
@@ -152,7 +152,7 @@ def test_CellCNN_old(model, test_datasets_no_labels):
 def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
                     val_datasets, val_y, test_datasets_no_labels, 
                     trials = 10, max_epochs = 50, nrun = 15, 
-                    n_cell = 100000, seed_list = None, hyper = None):
+                    n_cell = 100000, nsubset = 50, seed_list = None, hyper = None):
     
     models_lists = []
     if (seed_list is None) or (len(seed_list) < trials): 
@@ -168,7 +168,7 @@ def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
         seed = seed_list[i] * (i + 1)
         print(f'Seed used: {seed}')
         model = train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, test_datasets_no_labels,
-                                                    n_cell, max_epochs, nrun, seed, hyper = hyper)
+                                                    n_cell, nsubset, max_epochs, nrun, seed, hyper = hyper)
 
         models_lists.append(model)
         
@@ -188,3 +188,22 @@ def trials_test_CellCNN_old(models_lists, test_datasets_no_labels):
         print(f'Trial {i+1} Done!\n')
     
     return predictions_list, results_list
+
+"""
+'========================================================================================================================'
+
+def trials_test_CellCNN_old(models_lists, test_datasets_no_labels):
+    predictions_list = []
+    results_list = [] 
+    tot_trials = len(models_lists)
+    for i in range(tot_trials):
+        #print(len(models_lists))
+        prediction, result = test_CellCNN_restructured(models_lists[i], test_datasets_no_labels)
+        predictions_list.append(prediction)
+        
+        results_list.append(result)
+        
+        print(f'Trial {i+1} Done!\n')
+    
+    return predictions_list, results_list
+"""
