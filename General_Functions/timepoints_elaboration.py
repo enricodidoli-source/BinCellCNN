@@ -113,15 +113,16 @@ def donor_division(multiple_donations: dict, all_datasets):
                 donor_l.append(0)
         donors_labels[donor] = donor_l
     print(donors_labels)
+    
     healthy_donors = []
     blast_donors = []
     mixed_donors = []
     for donor, donations_labels in donors_labels.items():
         if 1 in donations_labels and 0 not in donations_labels:
             
-            healthy_donors.append(donor)
-        elif 0 in donations_labels and 1 not in donations_labels:
             blast_donors.append(donor)
+        elif 0 in donations_labels and 1 not in donations_labels:
+            healthy_donors.append(donor)
         else:
             mixed_donors.append(donor)
     return healthy_donors, blast_donors, mixed_donors
@@ -137,22 +138,22 @@ def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, bl
     test_donors_idx = []
 
     # healthy donors
-    for i, don in enumerate(healthy_donors_idx):
+    for i, don in enumerate(blast_donors_idx):
         if i in range(set_division[0]):                 # append first t donors to train donors set
-            train_donors_idx.append(healthy_donors[don])
+            train_donors_idx.append(blast_donors[don])
         elif i in range(set_division[0], set_division[0] + set_division[1]):  # append v donors to validation donors set
-            val_donors_idx.append(healthy_donors[don])
+            val_donors_idx.append(blast_donors[don])
         else:                                           # append last (n - t - v) donors to test donors set
-            test_donors_idx.append(healthy_donors[don])
+            test_donors_idx.append(blast_donors[don])
 
     # blast donors
-    for i, don in enumerate(blast_donors_idx):
+    for i, don in enumerate(healthy_donors_idx):
         if i == 0:
-            train_donors_idx.append(blast_donors[don])
+            train_donors_idx.append(healthy_donors[don])
         elif i == 1:
-            val_donors_idx.append(blast_donors[don])
+            val_donors_idx.append(healthy_donors[don])
         else:
-            test_donors_idx.append(blast_donors[don])
+            test_donors_idx.append(healthy_donors[don])
 
     # mixed donors       
     for i, don in enumerate(mixed_donors_idx):
