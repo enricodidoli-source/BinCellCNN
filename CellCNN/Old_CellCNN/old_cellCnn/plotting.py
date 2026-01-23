@@ -20,7 +20,7 @@ import matplotlib.cm as cm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
-from cellCnn.utils import mkdir_p
+from old_cellCnn.utils import mkdir_p
 import statsmodels.api as sm
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,8 @@ def plot_results(results, samples, phenotypes, labels, outdir,
     z = np.hstack(per_cell_ids)
     print(x.shape)
     print(f'x shape: {x.shape[0]}')
+    print('ciao')
+    print('')
     # ======================================================================== #
     # Normalizaition + tSNE visualization
 
@@ -178,7 +180,7 @@ def plot_results(results, samples, phenotypes, labels, outdir,
     logger.info("Computing t-SNE projection...")
     print("Computing t-SNE projection...")
     print(x.shape)
-    print(x)
+    #print(x)
     tsne_idx = np.random.choice(x.shape[0], tsne_ncell) # samples the chosen number of id's(tsne_cells) from the first dataset of cells
     x_for_tsne = x[tsne_idx].copy() # extract che random sampled subset as a new array
 
@@ -193,13 +195,15 @@ def plot_results(results, samples, phenotypes, labels, outdir,
     #x_tsne = TSNE(n_components=2).fit_transform(x_for_tsne)
 
     vmin, vmax = np.zeros(x.shape[1]), np.zeros(x.shape[1]) #percentiles
-
+    print(f' x shape: {x.shape[1]}, vmin, vmax: {(vmin, vmax)}')
+    
     for seq_index in range(x.shape[1]):
         vmin[seq_index] = np.percentile(x[:, seq_index], 1)
         vmax[seq_index] = np.percentile(x[:, seq_index], 99)
+        
 
     fig_path = os.path.join(outdir, '12.tsne_all_cells')
-    plot_tsne_grid(x_tsne, x_for_tsne, fig_path, labels=labels, fig_size=(20, 20),
+    plot_tsne_grid(x_tsne, x_for_tsne, fig_path, labels=labels, fig_size=(20, 20), #(20,20)
                    point_size=5)
     # ======================================================================== #
     # filters analysis 
@@ -357,7 +361,7 @@ def plot_filters(results, labels, outdir):
     if results['selected_filters'] is not None:
         w = results['selected_filters'][:, idx_except_bias]
         fig_path = os.path.join(outdir, '8.consensus_filter_weights.pdf')
-        plot_nn_weights(w, labels_except_bias, fig_path, fig_size=(10, 10))
+        plot_nn_weights(w, labels_except_bias, fig_path, fig_size=(20, 20))
         filters = results['selected_filters']
     else:
         sys.exit('Consensus filters were not found.')
@@ -674,11 +678,11 @@ def plot_tsne_grid(z, x, fig_path, labels=None, fig_size=(9, 9), g_j=7,
     plt.clf()
     plt.close()
 
-'''
+
 def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
                              labels=None, fig_size=(9, 9), g_j=7, s=.5, suffix='png'):
     ncol = x_pos.shape[1]
-    ncol = int(x.shape[1])
+    ncol = int(x_pos.shape[1])
     g_j = int(g_j)
     g_i = int(ncol / g_j) if (ncol % g_j == 0) else int(ncol / g_j) + 1
     print("DEBUG g_i:", g_i, type(g_i))
@@ -689,12 +693,23 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
 
     fig = plt.figure(figsize=fig_size)
     fig.clf()
-    grid = ImageGrid(fig, 111,
+    rect = 111
+    print(f'np.isfinite(rect): {np.isfinite(rect)}')
+    print(f'rect: {rect}. type:{type(rect)}')
+    
+    # Salta ImageGrid completamente e usa subplot
+    
+    fig, axes = plt.subplots(g_i, g_j, figsize=fig_size)
+    if g_i == 1:
+        axes = axes.reshape(1, -1)
+    grid = axes.flatten()
+    '''
+    grid = ImageGrid(fig, rect = rect,
                      nrows_ncols=(g_i, g_j),
                      ngrids=None if ncol % g_j == 0 else ncol,
                      aspect=True,
                      direction="row",
-                     axes_pad=(0.15, 0.5),
+                     axes_pad=0.3, #(0.15, 0.5),
                      #add_all=True,
                      label_mode="1",
                      share_all=True,
@@ -703,6 +718,7 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
                      cbar_size="8%",
                      cbar_pad="5%",
                      )
+    '''
     for seq_index in range(ncol):
         ax = grid[seq_index]
         ax.text(0, .92, labels[seq_index],
@@ -713,7 +729,9 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
                    alpha=0.5, edgecolors='face')
         im = ax.scatter(z_pos[:, 0], z_pos[:, 1], s=s, marker='o', c=a, cmap=cm.jet,
                         edgecolors='face', vmin=vmin[seq_index], vmax=vmax[seq_index])
-        ax.cax.colorbar(im)
+        #ax.cax.colorbar(im)
+        fig.colorbar(im, ax=ax)
+        fig.colorbar(im, ax=ax, location='top')
         clean_axis(ax)
         ax.grid(False)
     plt.savefig('.'.join([fig_path, suffix]), format=suffix)
@@ -750,7 +768,7 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
     try:
         # Create ImageGrid with explicit type conversion and validation
         grid = ImageGrid(fig,
-                         rect = (1.0, 1.0, 1.0, 1.0),  # left=1, bottom=1, width=1, height=1
+                         #rect=111, #rect = (1.0, 1.0, 1.0, 1.0),  # left=1, bottom=1, width=1, height=1
                          nrows_ncols=(int(g_i), int(g_j)),
                          ngrids=int(ncol),  # Always specify exact number needed
                          aspect=True,
@@ -816,7 +834,7 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
     plt.savefig('.'.join([fig_path, suffix]), format=suffix, bbox_inches='tight', dpi=150)
     plt.clf()
     plt.close()
-
+'''
 def plot_2D_map(z, feat, fig_path, s=2, plot_contours=False):
     sns.set_style('white')
     _fig, ax = plt.subplots(figsize=(5, 5))

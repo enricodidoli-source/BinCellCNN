@@ -118,6 +118,32 @@ class CellCnn(object):
         self.model_sorted_idx = None
         self.seed = seed
         self.resampled =  None
+
+        self.all_params = {}
+        self.all_params['scale'] = self.scale
+        self.all_params['quant_normed'] = self.quant_normed
+        self.all_params['regression'] = self.regression
+        self.all_params['nsubset'] = self.nsubset
+        self.all_params['ncell'] = self.ncell
+        self.all_params['per_sample'] = self.per_sample
+        self.all_params['subset_selection'] = self.subset_selection
+        self.all_params['maxpool_percentages'] = self.maxpool_percentages
+        self.all_params['nfilter_choice'] = self.nfilter_choice
+        self.all_params['learning_rate'] = self.learning_rate
+        self.all_params['coeff_l1'] = self.coeff_l1
+        self.all_params['coeff_l2'] = self.coeff_l2
+        self.all_params['dropout'] = self.dropout
+        self.all_params['dropout_p'] = self.dropout_p
+        self.all_params['max_epochs'] = self.max_epochs
+        self.all_params['patience'] = self.patience
+        self.all_params['dendrogram_cutoff'] = self.dendrogram_cutoff
+        self.all_params['accur_thres'] = self.accur_thres
+        self.all_params['verbose'] = self.verbose
+        self.all_params['resampled'] = self.resampled
+        self.all_params['seed'] = self.seed
+        
+        
+        
         
     def fit(self, train_samples, train_phenotypes, outdir, valid_samples=None,
             valid_phenotypes=None, generate_valid_set=True):
@@ -168,11 +194,12 @@ class CellCnn(object):
                           dropout=self.dropout, dropout_p=self.dropout_p,
                           max_epochs=self.max_epochs,
                           patience=self.patience, dendrogram_cutoff=self.dendrogram_cutoff,
-                          accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed)
+                          accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed, generate_valid_set = generate_valid_set)
         self.results = res
+        self.all_params['results'] = self.results
         return self
 
-    def predict(self, new_samples, ncell_per_sample=None):
+    def predict(self, new_samples, ncell_per_sample=None, seed = None):
 
         """ Makes predictions for new samples.
 
@@ -187,7 +214,18 @@ class CellCnn(object):
         Returns:
             y_pred : Phenotype predictions for `new_samples`.
         """
-
+        '''
+        # Use a fixed seed for reproducible subsampling
+        if seed is not None:
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()  # fallback (non-deterministic)
+        '''    
+        print(f'seed: {seed}. Type: {type(seed)}')
+        seed = int(seed)
+        print(f'seed: {seed}. Type: {type(seed)}')
+        self.all_params['prediction_seed'] = seed
+            
         if ncell_per_sample is None:
             ncell_per_sample = np.min([x.shape[0] for x in new_samples])
         logger.info(f"Predictions based on multi-cell inputs containing {ncell_per_sample} cells.")
@@ -195,19 +233,24 @@ class CellCnn(object):
         # z-transform the new samples if we did that for the training samples
         scaler = self.results['scaler']
         if scaler is not None:
-            new_samples = copy.deepcopy(new_samples)
+            #new_samples = copy.deepcopy(new_samples)
             new_samples = [scaler.transform(x) for x in new_samples]
 
         nmark = new_samples[0].shape[1]
         n_classes = self.results['n_classes']
-
+        #print(n_classes)
         # get the configuration of the top 3 models
         accuracies = self.results['accuracies']
         sorted_idx = np.argsort(accuracies)[::-1][:3]
         config = self.results['config']
-
+        #print('')
+        #print(config)
+        #print('')
+        
         y_pred = np.zeros((3, len(new_samples), n_classes))
         for i_enum, i in enumerate(sorted_idx):
+            keras.utils.set_random_seed(int(seed + i))
+            
             nfilter = config['nfilter'][i]
             maxpool_percentage = config['maxpool_percentage'][i]
             ncell_pooled = max(1, int(maxpool_percentage / 100. * ncell_per_sample))
@@ -220,14 +263,25 @@ class CellCnn(object):
 
             # and load the learned filter and output weights
             weights = self.results['best_3_nets'][i_enum]
+            #print(f'weights: {weights}')
+            
             model.set_weights(weights)
 
             # select a random subset of `ncell_per_sample` and make predictions
-            new_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
+            new_samples_subsets = []
+            for x in new_samples:
+                # Shuffle using the RNG
+                '''
+                indices = rng.permutation(x.shape[0])[:ncell_per_sample]
+                subset = x[indices]
+                new_samples_subsets.append(subset.reshape(1, ncell_per_sample, nmark))
+                '''
+                new_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
                            for x in new_samples]
+            #print(f'new_samples: {new_samples_subsets}')
             data_test = np.vstack(new_samples)
             y_pred[i_enum] = model.predict(data_test)
-            
+        #print(y_pred)
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
 def data_transformation(dataset, labels = False):
@@ -269,7 +323,7 @@ def grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate):
     return param_grid 
     
 def train_model(train_samples, train_phenotypes, outdir,
-                valid_samples=None, valid_phenotypes=None,
+                valid_samples=None, valid_phenotypes=None, generate_valid_set = False,
                 scale=True, regression = False,
                 ncell=200, nsubset=1000, per_sample=False, subset_selection='random',
                 maxpool_percentages=None, nfilter_choice=None,
@@ -282,26 +336,38 @@ def train_model(train_samples, train_phenotypes, outdir,
     # Imposta i seed GLOBALI all'inizio
     random.seed(seed)
     np.random.seed(seed)
-    tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!
-    
+    tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!    
     labels = False
     
     mkdir_p(outdir)
     
     # copy the list of samples so that they are not modified in place
     train_samples = copy.deepcopy(train_samples)
-    valid_samples = copy.deepcopy(valid_samples)
-
+    if valid_samples is not None:
+        valid_samples = copy.deepcopy(valid_samples)
+    
     # merge all input samples (X_train, X_valid)
     # and generate an identifier for each of them (train_id, valid_id)
     train_sample_ids = np.arange(len(train_phenotypes))
-    print(len(train_sample_ids))
-    print(len(train_samples))
     X_train, id_train = combine_samples(train_samples, train_sample_ids)
 
-    valid_sample_ids = np.arange(len(valid_phenotypes))
-    X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
+    if valid_samples is not None:
+        valid_sample_ids = np.arange(len(valid_phenotypes))
+        X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
+    elif (valid_samples is None) and generate_valid_set:
+        sample_ids = range(len(train_phenotypes))
+        X, sample_id = combine_samples(train_samples, sample_ids)
+        valid_phenotypes = train_phenotypes
 
+        # split into train-validation partitions
+        eval_folds = 5
+        #kf = StratifiedKFold(sample_id, eval_folds)
+        #train_indices, valid_indices = next(iter(kf))
+        kf = StratifiedKFold(n_splits=eval_folds)
+        train_indices, valid_indices = next(kf.split(X, sample_id))
+        X_train, id_train = X[train_indices], sample_id[train_indices]
+        X_valid, id_valid = X[valid_indices], sample_id[valid_indices]
+    
     if scale:
         X_train, z_scaler = data_transformation(X_train, labels = labels)
     else:
@@ -313,7 +379,7 @@ def train_model(train_samples, train_phenotypes, outdir,
     # an array containing the phenotype for each single cell
     y_train = train_phenotypes[id_train]
 
-    if valid_samples is not None:
+    if valid_samples is not None or generate_valid_set:
         
         if scale:
             X_valid, z_scaler = data_transformation(X_valid, labels = labels)
@@ -334,46 +400,46 @@ def train_model(train_samples, train_phenotypes, outdir,
         # generate 'nsubset' multi-cell inputs per input sample
         
         if labels:
-            print(f'train_phenotypes:{train_phenotypes}')
-            print(f'id_train:{id_train}')
-            
+            print(train_phenotypes)
             X_tr, y_tr, S, y_train_resampled = generate_subsets(X_train, train_phenotypes, id_train,
                                           nsubset, ncell, per_sample, seed=seed)
-            
-            print(hjfxujd)
+
             resampled = S.copy()
             if (valid_samples is not None) or generate_valid_set:
                 X_v, y_v, S, y_valid_resampled = generate_subsets(X_valid, valid_phenotypes, id_valid,
                                             nsubset, ncell, per_sample, seed=seed + 1000)
         else:
-            print(f'train_phenotypes:{train_phenotypes}')
-            print(f'id_train:{id_train}')
+            print(train_phenotypes)
             X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
                                           nsubset, ncell, per_sample, seed=seed, labels = labels)
 
-            print(f'Nsubsets, nmarkers, ncells per sub : {X_tr.shape}')
-            print(hjfxujd)
+            
             if (valid_samples is not None) or generate_valid_set:
                 X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
                                             nsubset, ncell, per_sample, seed=seed + 1000, labels = labels)
-        print(len(X_v[0]))
-        print(len(X_tr[0]))
+                
     # neural network configuration
     # batch size
+
+    train_samples = []
+    #valid_samples = []
+    train_sample_ids = []
+    X_train = []
+    X_valid = []
     
     bs = 200
 
     # keras needs (nbatch, ncell, nmark)
     X_tr = np.swapaxes(X_tr, 2, 1)
-    X_v = np.swapaxes(X_v, 2, 1)
+    if valid_samples is not None  or generate_valid_set:
+        X_v = np.swapaxes(X_v, 2, 1)
     n_classes = 1
 
-    print(len(X_v[0]))
-    print(len(X_tr[0]))
     if not regression:
         n_classes = len(np.unique(train_phenotypes))
         y_tr = keras.utils.to_categorical(y_tr, n_classes)
-        y_v = keras.utils.to_categorical(y_v, n_classes)
+        if valid_samples is not None  or generate_valid_set:
+            y_v = keras.utils.to_categorical(y_v, n_classes)
 
     # define all cobinations of parameters
     param_grid = grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate)               
@@ -387,6 +453,7 @@ def train_model(train_samples, train_phenotypes, outdir,
     config['learning_rate'] = []
     config['maxpool_percentage'] = []
 
+    
     for irun in range(len(param_grid)):
         
         print(f'\n# ============================================= #')
@@ -406,7 +473,7 @@ def train_model(train_samples, train_phenotypes, outdir,
 
         nfilter, mp, lr = param_grid[irun]
         print(f'Adopted Parameters: {param_grid[irun]}')
-
+        #print(generate_valid_set)
         #### Number of filters ####
         # choose number of filters for this run
         config['nfilter'].append(nfilter)
@@ -433,20 +500,25 @@ def train_model(train_samples, train_phenotypes, outdir,
             #### weights saving ####
         #for i in range(1):
             if not regression:
-                # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
-                # (save_best_only tells to the function to save only the est result)
-                check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
-                                  mode='auto', save_weights_only=True) 
+                if valid_samples is not None  or generate_valid_set:
+                    # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
+                    # (save_best_only tells to the function to save only the est result)
+                    check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
+                                      mode='auto', save_weights_only=True) 
+                    
+                    # if the val_loss metrcis does not improve for 5 epochs, the training stops
+                    earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
+                    
+                    # keras.fit() trains the model
+                    model.fit(X_tr, y_tr,
+                              epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
+                              validation_data=(X_v, y_v), verbose=verbose)
+                else:
+                    check = callbacks.ModelCheckpoint(filepath, monitor='loss', save_best_only=True,
+                                      mode='min', save_weights_only=True) 
+                    model.fit(X_tr, y_tr,
+                            epochs=max_epochs, batch_size=bs, callbacks=[check], verbose=verbose)
                 
-                # if the val_loss metrcis does not improve for 5 epochs, the training stops
-                earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
-                
-                # keras.fit() trains the model
-                print(len(X_v[0]))
-                print(len(X_tr[0]))
-                model.fit(X_tr, y_tr,
-                          epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
-                          validation_data=(X_v, y_v), verbose=verbose)
             else:
                 check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
                                   mode='auto', save_weights_only=True)
@@ -461,9 +533,10 @@ def train_model(train_samples, train_phenotypes, outdir,
             model.load_weights(filepath)
 
             if not regression:
-                valid_metric = model.evaluate(X_v, y_v)[-1] # test the model on the validation set
-                logger.info(f"Best validation accuracy: {valid_metric[1]:.2f}")
-                accuracies[irun] = valid_metric[1]
+                if valid_samples is not None  or generate_valid_set:
+                    valid_metric = model.evaluate(X_v, y_v)[-1] # test the model on the validation set
+                    logger.info(f"Best validation accuracy: {valid_metric[1]:.2f}")
+                    accuracies[irun] = valid_metric[1]
 
             else:
                 train_metric = model.evaluate(X_tr, y_tr, batch_size=bs) 
@@ -480,6 +553,7 @@ def train_model(train_samples, train_phenotypes, outdir,
             sys.stderr.write('An exception was raised during training the network.\n')
             sys.stderr.write(str(e) + '\n')
         #'''
+        #print_var_memory()
     # the top 3 performing networks
     model_sorted_idx = np.argsort(accuracies)[::-1][:3]
     best_sorted_indices = np.argsort(accuracies)[::-1]
@@ -503,24 +577,25 @@ def train_model(train_samples, train_phenotypes, outdir,
     w_cons, cluster_res = cluster_profiles(w_store, nmark, accuracies, accur_thres,
                                            dendrogram_cutoff=dendrogram_cutoff)
     results = {
+        'scaler': z_scaler,
+        'n_classes': n_classes,
+        'model_sorted_idx': best_sorted_indices,
+        'config': config,
+        'accuracies': accuracies,
+        'best_3_nets': best_3_nets,
         'clustering_result': cluster_res,
         'selected_filters': w_cons,
         'best_net': best_net,
-        'best_3_nets': best_3_nets,
         'w_best_net': w_best_net,
-        'accuracies': accuracies,
-        'best_model_index': best_accuracy_idx,
-        'config': config,
-        'scaler': z_scaler,
-        'n_classes': n_classes,
-        'model_sorted_idx': best_sorted_indices
+        'best_model_index': best_accuracy_idx
     }
     
     if labels:
         results['y_labels_resampled'] = y_train_resampled
-        results['resampled'] = esampled
+        results['resampled'] = resampled
 
-    if (valid_samples is not None) and (w_cons is not None):
+    if valid_samples is not None:
+      if (w_cons is not None):
         maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
         if regression:
             tau = get_filters_regression(w_cons, z_scaler, valid_samples, valid_phenotypes,
@@ -528,6 +603,7 @@ def train_model(train_samples, train_phenotypes, outdir,
             results['filter_tau'] = tau
 
         else:
+            
             #print(f'valid_samples: {valid_samples}')
             if labels:
                 
@@ -547,7 +623,7 @@ def train_model(train_samples, train_phenotypes, outdir,
 
 
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
-                k, dropout, dropout_p, regression, n_classes, lr=0.01,seed=42):
+                k, dropout, dropout_p, regression, n_classes, lr=0.01, seed=42):
     """ Builds the neural network architecture """
 
     # the input layer
@@ -590,10 +666,12 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
     model = keras.Model(inputs=data_input, outputs=output)
 
     if not regression:
+        #import tensorflow_addons as tfa
+        #f1_score = tfa.metrics.F1Score(num_classes=n_classes, average=None, name="f1_score")
         f1_score = keras.metrics.F1Score(average=None, threshold=None, name="f1_score", dtype=None)
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='categorical_crossentropy',
-                      metrics = f1_score)#['accuracy'])
+                      metrics = [f1_score])#['accuracy'])
     else:
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='mean_squared_error')
@@ -624,3 +702,6 @@ def pool_top_k(x, k=10):
     result = tf.reduce_mean(top_k_values, axis=2)
 
     return result
+
+
+

@@ -222,21 +222,15 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False, seed = 42):
 
 def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
                      per_sample=False, k_init=False, seed = 42, labels = True):
-    print(X)
+    
     S = dict()
     n_out = len(np.unique(sample_id))
-    print(f'n_out: {n_out}')
     
     for ylabel in range(n_out):
-        
         X_i = filter_per_class(X, sample_id, ylabel)
-        
-        print(f'X_i: {len(X_i)}')
+
         S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
 
-        print(f'resampled subsets per sample: {len(S[ylabel])}')
-        
-    print(f'resampled number: {len(S)}')
     # mix them
     true_labels_list = []
     data_list, y_list = [], []
@@ -365,8 +359,10 @@ def get_selected_cells(filter_w, data, scaler=None, filter_response_thres=0,
     nmark = data.shape[1]
     if scaler is not None:
         data = scaler.transform(data)
+        
     w, b = filter_w[:nmark], filter_w[nmark]
     g = np.sum(w.reshape(1, -1) * data, axis=1) + b
+    
     if export_continuous:
         g = relu(g).reshape(-1, 1)
         g_thres = (g > filter_response_thres).reshape(-1, 1)

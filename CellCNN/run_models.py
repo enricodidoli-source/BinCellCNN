@@ -45,11 +45,16 @@ def train_CellCNN_restructured(CellCnn, train_datasets, train_y, val_datasets, v
 
     return model
 
-def test_CellCNN_restructured(model, test_datasets_no_labels):
+def test_CellCNN_restructured(model, test_datasets_no_labels, seed = None):
     print(f'Prediction started...')
-    
-    test_pred = model.predict((test_datasets_no_labels))
+
+    if seed is not None:
+        test_pred = model.predict((test_datasets_no_labels), seed = seed)
+    else:
+        test_pred = model.predict((test_datasets_no_labels))
+        
     print(f'Done')
+    print(test_pred)
     return test_pred, model.results 
 
 '========================================================================================================================================'
@@ -96,8 +101,9 @@ def trials_test_CellCNN(models_lists, test_datasets_no_labels):
 
 '========================================================================================================================================'
 
-def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, test_datasets_no_labels,
-                      n_cell = 10, nsubset = 50, max_epochs=5, nrun=1, seed = 42, hyper = None):
+def train_CellCNN_old(CellCnn, train_datasets, train_y, test_datasets_no_labels,
+                      n_cell = 10, nsubset = 50, max_epochs=5, nrun=1, seed = 42, hyper = None, val_datasets = None, val_y = None, 
+                      generate = False):
         
     if hyper is None:
             nfilter = [3,5,7,9]
@@ -106,6 +112,9 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, tes
     else:
             nfilter, maxpool_p, learning_r = hyper
     
+    
+    print(f'Seed used: {seed}: {type(seed)}')
+
     model = CellCnn(
         ncell = n_cell,            #200                        # Number of cells per multi-cell input (sampled from the 'patient' datasets)
         nsubset = nsubset,                                    # Total number of multi-cell inputs that will be generated per class (or sample and class)
@@ -119,7 +128,7 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, tes
         regression=False,
         scale=True,                                       # Z-score normalization
         verbose=1,
-        seed = seed,
+        seed = int(seed),
     )
 
     print(f'Model defined...')
@@ -127,20 +136,34 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, tes
     outdir = f'/content/cellcnn_results'  # Results Directory
 
     print(f'Fitting started...')
-    
-    model.fit(
-            train_samples = train_datasets,
-            train_phenotypes = np.array(train_y),
-            outdir=outdir,
-            valid_samples = val_datasets,
-            valid_phenotypes = np.array(val_y),
-            generate_valid_set = False
-        )
+
+    if val_datasets is not None:
+        model.fit(
+                train_samples = train_datasets,
+                train_phenotypes = np.array(train_y),
+                outdir=outdir,
+                valid_samples = val_datasets,
+                valid_phenotypes = np.array(val_y),
+                generate_valid_set = False
+            )
+    else:
+        
+        model.fit(
+                train_samples = train_datasets,
+                train_phenotypes = np.array(train_y),
+                outdir=outdir,
+                #valid_samples = val_datasets,
+                #valid_phenotypes = np.array(val_y),
+                generate_valid_set = generate
+            )
     return model
     
-def test_CellCNN_old(model, test_datasets_no_labels):
+def test_CellCNN_old(model, test_datasets_no_labels, seed = None):
     print(f'Prediction started...')
-    test_pred = model.predict((test_datasets_no_labels))
+    if seed is not None:
+        test_pred = model.predict((test_datasets_no_labels), seed = seed)
+    else:
+        test_pred = model.predict((test_datasets_no_labels))
     print(f'Done')
     return test_pred, model.results
 
@@ -150,9 +173,9 @@ def test_CellCNN_old(model, test_datasets_no_labels):
 
 
 def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
-                    val_datasets, val_y, test_datasets_no_labels, 
+                     test_datasets_no_labels, 
                     trials = 10, max_epochs = 50, nrun = 15, 
-                    n_cell = 100000, nsubset = 50, seed_list = None, hyper = None):
+                    n_cell = 100000, nsubset = 50, seed_list = None, hyper = None, val_datasets = None, val_y = None, generate = False):
     
     models_lists = []
     if (seed_list is None) or (len(seed_list) < trials): 
@@ -167,20 +190,31 @@ def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
         print(f'Trial {i+1} started')
         seed = seed_list[i] * (i + 1)
         print(f'Seed used: {seed}')
-        model = train_CellCNN_old(CellCnn, train_datasets, train_y, val_datasets, val_y, test_datasets_no_labels,
-                                                    n_cell, nsubset, max_epochs, nrun, seed, hyper = hyper)
-
+        if val_datasets is not None:
+            model = train_CellCNN_old(CellCnn, train_datasets, train_y,  test_datasets_no_labels,
+                                                        n_cell, nsubset, max_epochs, nrun, seed, hyper = hyper, 
+                                      val_datasets = val_datasets, val_y = val_y, generate = False)
+    
+        else:
+            model = train_CellCNN_old(CellCnn, train_datasets, train_y, #val_datasets, val_y, 
+                                      test_datasets_no_labels,
+                                      n_cell, nsubset, max_epochs, nrun, seed, hyper = hyper, generate = generate)
         models_lists.append(model)
         
     return models_lists
     
-def trials_test_CellCNN_old(models_lists, test_datasets_no_labels):
+def trials_test_CellCNN_old(models_lists, test_datasets_no_labels, seed_list = None):
     predictions_list = []
     results_list = [] 
     tot_trials = len(models_lists)
+    
+    if seed_list is None:
+        random.seed(42)
+        seed_list = random.choices(list(range(1, 100000)), k=tot_trials)
+                                   
     for i in range(tot_trials):
         print(len(models_lists))
-        prediction, result = test_CellCNN_restructured(models_lists[i], test_datasets_no_labels)
+        prediction, result = test_CellCNN_restructured(models_lists[i], test_datasets_no_labels, seed = seed_list[i])
         predictions_list.append(prediction)
         
         results_list.append(result)

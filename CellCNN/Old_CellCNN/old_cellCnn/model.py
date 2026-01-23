@@ -118,6 +118,29 @@ class CellCnn(object):
         self.model_sorted_idx = None
         self.seed = seed
         self.resampled =  None
+
+        self.all_params = {}
+        self.all_params['scale'] = self.scale
+        self.all_params['quant_normed'] = self.quant_normed
+        self.all_params['regression'] = self.regression
+        self.all_params['nsubset'] = self.nsubset
+        self.all_params['ncell'] = self.ncell
+        self.all_params['per_sample'] = self.per_sample
+        self.all_params['subset_selection'] = self.subset_selection
+        self.all_params['maxpool_percentages'] = self.maxpool_percentages
+        self.all_params['nfilter_choice'] = self.nfilter_choice
+        self.all_params['learning_rate'] = self.learning_rate
+        self.all_params['coeff_l1'] = self.coeff_l1
+        self.all_params['coeff_l2'] = self.coeff_l2
+        self.all_params['dropout'] = self.dropout
+        self.all_params['dropout_p'] = self.dropout_p
+        self.all_params['max_epochs'] = self.max_epochs
+        self.all_params['patience'] = self.patience
+        self.all_params['dendrogram_cutoff'] = self.dendrogram_cutoff
+        self.all_params['accur_thres'] = self.accur_thres
+        self.all_params['verbose'] = self.verbose
+        self.all_params['resampled'] = self.resampled
+        self.all_params['seed'] = self.seed
         
     def fit(self, train_samples, train_phenotypes, outdir, valid_samples=None,
             valid_phenotypes=None, generate_valid_set=True):
@@ -170,9 +193,10 @@ class CellCnn(object):
                           patience=self.patience, dendrogram_cutoff=self.dendrogram_cutoff,
                           accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed)
         self.results = res
+        self.all_params['results'] = self.results
         return self
 
-    def predict(self, new_samples, ncell_per_sample=None):
+    def predict(self, new_samples, ncell_per_sample=None, seed = None):
 
         """ Makes predictions for new samples.
 
@@ -187,7 +211,18 @@ class CellCnn(object):
         Returns:
             y_pred : Phenotype predictions for `new_samples`.
         """
-
+        '''
+        # Use a fixed seed for reproducible subsampling
+        if seed is not None:
+            rng = np.random.default_rng(seed)
+        else:
+            rng = np.random.default_rng()  # fallback (non-deterministic)
+        '''    
+        print(f'seed: {seed}. Type: {type(seed)}')
+        seed = int(seed)
+        print(f'seed: {seed}. Type: {type(seed)}')
+        self.all_params['prediction_seed'] = seed
+            
         if ncell_per_sample is None:
             ncell_per_sample = np.min([x.shape[0] for x in new_samples])
         logger.info(f"Predictions based on multi-cell inputs containing {ncell_per_sample} cells.")
@@ -195,19 +230,24 @@ class CellCnn(object):
         # z-transform the new samples if we did that for the training samples
         scaler = self.results['scaler']
         if scaler is not None:
-            new_samples = copy.deepcopy(new_samples)
+            #new_samples = copy.deepcopy(new_samples)
             new_samples = [scaler.transform(x) for x in new_samples]
 
         nmark = new_samples[0].shape[1]
         n_classes = self.results['n_classes']
-
+        #print(n_classes)
         # get the configuration of the top 3 models
         accuracies = self.results['accuracies']
         sorted_idx = np.argsort(accuracies)[::-1][:3]
         config = self.results['config']
-
+        #print('')
+        #print(config)
+        #print('')
+        
         y_pred = np.zeros((3, len(new_samples), n_classes))
         for i_enum, i in enumerate(sorted_idx):
+            keras.utils.set_random_seed(int(seed + i))
+            
             nfilter = config['nfilter'][i]
             maxpool_percentage = config['maxpool_percentage'][i]
             ncell_pooled = max(1, int(maxpool_percentage / 100. * ncell_per_sample))
@@ -220,14 +260,25 @@ class CellCnn(object):
 
             # and load the learned filter and output weights
             weights = self.results['best_3_nets'][i_enum]
+            #print(f'weights: {weights}')
+            
             model.set_weights(weights)
 
             # select a random subset of `ncell_per_sample` and make predictions
-            new_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
+            new_samples_subsets = []
+            for x in new_samples:
+                # Shuffle using the RNG
+                '''
+                indices = rng.permutation(x.shape[0])[:ncell_per_sample]
+                subset = x[indices]
+                new_samples_subsets.append(subset.reshape(1, ncell_per_sample, nmark))
+                '''
+                new_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
                            for x in new_samples]
+            #print(f'new_samples: {new_samples_subsets}')
             data_test = np.vstack(new_samples)
             y_pred[i_enum] = model.predict(data_test)
-            
+        #print(y_pred)
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
 def data_transformation(dataset, labels = False):
@@ -259,7 +310,7 @@ def data_transformation(dataset, labels = False):
         
 
 def train_model(train_samples, train_phenotypes, outdir,
-                valid_samples=None, valid_phenotypes=None, generate_valid_set=True,
+                valid_samples=None, valid_phenotypes=None, generate_valid_set=False,
                 scale=True, quant_normed=False, nrun=20, regression=False,
                 ncell=200, nsubset=1000, per_sample=False, subset_selection='random',
                 maxpool_percentages=None, nfilter_choice=None,
@@ -273,6 +324,8 @@ def train_model(train_samples, train_phenotypes, outdir,
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!
+
+    print(1)
 
     if len(train_samples[0].iloc[0]) == 12: # 12 because cells analyzed have 11 markers + cell label
         print(f'There are labels. Labels set to True')
@@ -361,7 +414,7 @@ def train_model(train_samples, train_phenotypes, outdir,
         print(len(X_tr[0]))
     # neural network configuration
     # batch size
-    
+    print(2)
     bs = 200
 
     # keras needs (nbatch, ncell, nmark)
@@ -383,7 +436,7 @@ def train_model(train_samples, train_phenotypes, outdir,
     config['maxpool_percentage'] = []
     lr = learning_rate
 
- 
+    epochs_num = []
     for irun in range(nrun):
         
         print(f'\n# ============================================= #')
@@ -394,7 +447,7 @@ def train_model(train_samples, train_phenotypes, outdir,
         print(f'Seed: {run_seed}')
         np.random.seed(run_seed)
         tf.random.set_seed(run_seed)
-
+        print(3)
         # ============================================= #
         # hyperparameters selection
         # ============================================= #
@@ -444,9 +497,13 @@ def train_model(train_samples, train_phenotypes, outdir,
                 earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
                 
                 # keras.fit() trains the model
-                model.fit(X_tr, y_tr,
+                history = model.fit(X_tr, y_tr,
                           epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
                           validation_data=(X_v, y_v), verbose=verbose)
+                actual_epochs = len(history.history['loss'])
+                print(f"Epocche eseguite: {actual_epochs}")
+                epochs_num.append(actual_epochs)
+                #epochs_num.append(history)
             else:
                 check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
                                   mode='auto', save_weights_only=True)
@@ -456,6 +513,7 @@ def train_model(train_samples, train_phenotypes, outdir,
                 model.fit(X_tr, y_tr,
                           epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
                           validation_data=(X_v, y_v), verbose=verbose)
+
 
             # load the model from the epoch with highest validation accuracy
             model.load_weights(filepath)
@@ -513,12 +571,13 @@ def train_model(train_samples, train_phenotypes, outdir,
         'config': config,
         'scaler': z_scaler,
         'n_classes': n_classes,
-        'model_sorted_idx': best_sorted_indices
+        'model_sorted_idx': best_sorted_indices,
+        'epochs_num': epochs_num
     }
     
     if labels:
         results['y_labels_resampled'] = y_train_resampled
-        results['resampled'] = esampled
+        results['resampled'] = resampled
 
 
     if (valid_samples is not None) and (w_cons is not None):
@@ -596,7 +655,7 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
         
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='categorical_crossentropy',
-                      metrics = f1_score)#['accuracy'])
+                      metrics = [f1_score])#['accuracy'])
     else:
         model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='mean_squared_error')
