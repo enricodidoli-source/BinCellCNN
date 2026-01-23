@@ -5,7 +5,7 @@ import numpy as np
 import sys
 
 from sklearn.metrics import f1_score
-
+from sklearn.metrics import recall_score
 
 def extract_hyper(configuration, best_models):
     
@@ -61,11 +61,15 @@ def elaborate_predictions(predictions_list, test_y, results = True):
     accuracy_list = []
     pred_phenotypes_dict = {}
     f1_scores_list = []
-    for i, pred in enumerate(predictions_list):
+    recall_scores_list = []
+    for i, pred in enumerate(predictions_list): # a prediction for every different seed
         pred_phenotypes = phenotype_prediction(pred)
 
-        f1 = f1_score(test_y, pred_phenotypes, pos_label=1)
+        f1 = f1_score(test_y, pred_phenotypes, pos_label=1, zero_division = 0) # file-level
         f1_scores_list.append(f1)
+
+        recall = recall_score(test_y, pred_phenotypes, pos_label=1, zero_division = 0) # file-level
+        recall_scores_list.append(recall)
         
         tot_correct = np.array(pred_phenotypes) ==  test_y #checks differencies in prediction
         accuracy = np.sum(tot_correct)/ len(test_y)  #compute accuracy
@@ -75,6 +79,7 @@ def elaborate_predictions(predictions_list, test_y, results = True):
         if results:
             print(f'Trial {i} Accuracy: {accuracy}')
             print(f'Trial {i} F1_score: {f1}')
+            print(f'Trial {i} F1_score: {recall}')
             
     
     
@@ -94,8 +99,13 @@ def elaborate_predictions(predictions_list, test_y, results = True):
         print(f'mean_f1 over the ten trials: {mean_f1}')
         std_f1 = np.std(f1_scores_list)
         print(f'std_f1 over the ten trials: {std_f1}')
+
+        mean_recall = np.mean(recall_scores_list)
+        print(f'mean_recall over the ten trials: {mean_recall}')
+        std_recall = np.std(recall_scores_list)
+        print(f'std_recall over the ten trials: {std_recall}')
         
-    return pred_phenotype_df.T, accuracy_list , f1_scores_list 
+    return pred_phenotype_df.T, accuracy_list , f1_scores_list, recall_scores_list
 
 
 def show_hyperparameters(best_3_hyper):

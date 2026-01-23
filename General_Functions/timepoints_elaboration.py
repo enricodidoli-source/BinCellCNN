@@ -14,7 +14,7 @@ def remove_from_cache(files: list):
         else:
             print(f"{file} non trovato nella cache")
 
-def load_data(data_path, ext = '*.csv', max_file = None):
+def load_data(data_path, ext = '*.csv', max_file = None, remove_control = None):
 
     files_list = glob.glob(os.path.join(data_path, ext))
     if max_file is None:
@@ -24,8 +24,11 @@ def load_data(data_path, ext = '*.csv', max_file = None):
     multiple_donations = {}
     no_id = []
     counter = 0
-    
+    if remove_control:
+        files_list = [file_path for file_path in files_list if 'GHE' in file_path]
+                
     for file_path in files_list[:max_file]:
+        
         #import dataset
         dataset = pd.read_csv(file_path, sep = ';', decimal = ',').astype('float32')
         ALL_DATASETS.append(dataset) # list of all datasets
@@ -43,10 +46,11 @@ def load_data(data_path, ext = '*.csv', max_file = None):
             if int(element) > int(last_identifier):
                 last_identifier = int(element)
     print(last_identifier)
-    for dataset in multiple_donations['no_id']:
-        last_identifier += 1
-        multiple_donations[str(last_identifier)] = [dataset]
-    multiple_donations.pop('no_id')
+    if not remove_control:
+        for dataset in multiple_donations['no_id']:
+            last_identifier += 1
+            multiple_donations[str(last_identifier)] = [dataset]
+        multiple_donations.pop('no_id')
 
     return multiple_donations, ALL_DATASETS
 
@@ -130,7 +134,7 @@ def donor_division(multiple_donations: dict, all_datasets):
 
 '========================================================================================================================================'
 
-def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx, set_division = [2,1,2]):
+def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx, set_division = [1,1,2]):
     """Splits donors in train, validation and test according to the decided division"""
     
     train_donors_idx = []
@@ -190,6 +194,7 @@ def dataset_elaboration(multiple_donations, ALL_DATASETS, healthy_donors, blast_
 
     return train_donors_idx, val_donors_idx, test_donors_idx
 
+    
 '========================================================================================================================================'
 
 def donation_extraction(donors_idx, multiple_donations, ALL_DATASETS):
