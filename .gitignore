@@ -22,15 +22,12 @@ Projects_Backup/
 
 # Ignore files in CellCNN folder
 CellCNN/__pycache__/
-CellCNN/.ipynb_checkpoints/
-CellCNN/not/
-CellCNN/resampling_rework.ipynb
+CellCNN/not_to_push/
 
-CellCNN/results/.ipynb_checkpoints/
-CellCNN/results/02-10-25
-CellCNN/results/15-10-25
-CellCNN/results/old
+# Ignore files in General_Functions folder
+General_Functions/__pycache__/
+General_Functions/not_to_push/
 
-# Ignore files in CSNN folder
-CSNN/entire_code
-CSNN/experiment
+# Ignore CSNN folder
+CSNN
+CSNN

@@ -1,0 +1,235 @@
+import copy
+import pandas as pd
+import random
+import numpy as np
+import sys 
+import glob
+import os
+
+def remove_from_cache(files: list):
+    for file in files:
+        if file in sys.modules:
+            del sys.modules[file]
+            print(f"{file} rimosso dalla cache")
+        else:
+            print(f"{file} non trovato nella cache")
+
+def load_data(data_path, ext = '*.csv', max_file = None, remove_control = None):
+
+    files_list = glob.glob(os.path.join(data_path, ext))
+    if max_file is None:
+        max_file = len(files_list)
+        
+    ALL_DATASETS = []
+    multiple_donations = {}
+    no_id = []
+    counter = 0
+    if remove_control:
+        files_list = [file_path for file_path in files_list if 'GHE' in file_path]
+                
+    for file_path in files_list[:max_file]:
+        
+        #import dataset
+        dataset = pd.read_csv(file_path, sep = ';', decimal = ',').astype('float32')
+        ALL_DATASETS.append(dataset) # list of all datasets
+        blast_n = (dataset['IsBlast'] == 1).sum()
+        perc = round((blast_n/len(dataset))*100, 2)
+           
+        print(perc)
+        # divide the datasets by donors
+        multiple_donations = patient_code_extraction(file_path, counter, multiple_donations)
+        
+        print(f"Elaborating file {counter}: {file_path}") # information about the process
+        
+        counter += 1 
+    
+    # Fix no_id datasets
+    last_identifier = 0
+    for element in multiple_donations.keys():
+        if element.isdigit():
+            if int(element) > int(last_identifier):
+                last_identifier = int(element)
+    print(last_identifier)
+    #print(list(multiple_donations.keys()))
+
+    if not remove_control:
+      if 'no_id' in list(multiple_donations.keys()):
+        for dataset in multiple_donations['no_id']:
+            last_identifier += 1
+            multiple_donations[str(last_identifier)] = [dataset]
+        multiple_donations.pop('no_id')
+
+
+    patients = [int(key) for key in list(multiple_donations.keys())]
+    print(patients)
+    sorted_multiple_donations = {}
+    sorted_ALL_DATASETS = []
+
+    for pat_idx in range(1, max(patients) + 1):
+        if pat_idx in patients:
+            sorted_multiple_donations[str(pat_idx)] = multiple_donations[str(pat_idx)]
+            #for dataset_idx in sorted_multiple_donations[str(pat_idx)]:
+            #    sorted_ALL_DATASETS.append(ALL_DATASETS[dataset_idx])
+    
+
+    return sorted_multiple_donations, ALL_DATASETS #sorted_ALL_DATASETS
+
+
+def patient_code_extraction(text, counter, multiple_donations):
+    """Divides the donations by donor
+        Inpus:  - text: file_path
+                - counter: i-th file elaborated
+                - multiple_donations: dict. each donor code is associated to its sample datasets
+        Outputs:
+                - multiple_donations: dict updated with the new dataset elaborated 
+    """
+
+    sequence = 'B-ALL_GHE'
+    if sequence in text:
+        idx = text.find(sequence)
+        code = text[idx:-4]
+        #print(code)
+        if True: #code[-2] == '_' and code[-1].isdigit():
+            identifier = ''
+            idx = code.find('GHE')
+            patient_code =code[idx+3:]
+            
+            #print(patient_code)
+            for i, element in enumerate(patient_code):
+                if element.isdigit():
+                    identifier += element
+                else:
+                    break
+            
+            if identifier not in multiple_donations.keys():
+                
+                multiple_donations[identifier] = []
+                multiple_donations[identifier].append(counter)
+            else:
+                
+                multiple_donations[identifier].append(counter)
+    else:
+        
+        if 'no_id' not in multiple_donations.keys():
+                
+                multiple_donations['no_id'] = []
+                multiple_donations['no_id'].append(counter)
+        else:
+                
+                multiple_donations['no_id'].append(counter)
+
+    return multiple_donations
+
+'========================================================================================================================================'
+    
+def donor_division(multiple_donations: dict, all_datasets):
+    donors = len(multiple_donations)
+
+    #dataset_label_extraction
+    donors_labels = {}
+    for donor, donations in multiple_donations.items():
+        donor_l = []
+        for don in donations:
+            dataset = all_datasets[don]
+            blast_cells = (dataset['IsBlast'] == 1).sum()
+            if blast_cells > 0:
+                donor_l.append(1)
+            else:
+                donor_l.append(0)
+        donors_labels[donor] = donor_l
+    print(donors_labels)
+    
+    healthy_donors = []
+    blast_donors = []
+    mixed_donors = []
+    for donor, donations_labels in donors_labels.items():
+        if 1 in donations_labels and 0 not in donations_labels:
+            
+            blast_donors.append(donor)
+        elif 0 in donations_labels and 1 not in donations_labels:
+            healthy_donors.append(donor)
+        else:
+            mixed_donors.append(donor)
+    return healthy_donors, blast_donors, mixed_donors
+
+
+'========================================================================================================================================'
+
+def splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx, set_division = [1,1,2]):
+    """Splits donors in train, validation and test according to the decided division"""
+    
+    train_donors_idx = []
+    val_donors_idx = []
+    test_donors_idx = []
+
+    # healthy donors
+    for i, don in enumerate(blast_donors_idx):
+        if i in range(set_division[0]):                 # append first t donors to train donors set
+            train_donors_idx.append(blast_donors[don])
+        elif i in range(set_division[0], set_division[0] + set_division[1]):  # append v donors to validation donors set
+            val_donors_idx.append(blast_donors[don])
+        else:                                           # append last (n - t - v) donors to test donors set
+            test_donors_idx.append(blast_donors[don])
+
+    # blast donors
+    for i, don in enumerate(healthy_donors_idx):
+        if i == 0:
+            train_donors_idx.append(healthy_donors[don])
+        elif i == 1:
+            val_donors_idx.append(healthy_donors[don])
+        else:
+            test_donors_idx.append(healthy_donors[don])
+
+    # mixed donors       
+    for i, don in enumerate(mixed_donors_idx):
+        if i in range(set_division[1]):
+            train_donors_idx.append(mixed_donors[don])
+        elif i in range(set_division[0], set_division[0] + set_division[1]):
+            val_donors_idx.append(mixed_donors[don])
+        else:
+            test_donors_idx.append(mixed_donors[don])
+    return train_donors_idx, val_donors_idx, test_donors_idx
+
+
+def dataset_elaboration(multiple_donations, ALL_DATASETS, healthy_donors, blast_donors,
+                        mixed_donors, n_sub = 3, seed = 42, set_division = [2,1,2]):
+    """ Samples donors for Train, Validation and Test sets"""
+    
+    train_donors = []
+    val_donors = []
+    test_donors = []
+    
+    random.seed(seed)
+    print(f'Precess starts. Dividing donors...')
+    
+    # sammple indexed for donor division
+    healthy_donors_idx = random.sample(list(range(len(healthy_donors))), len(healthy_donors))
+    blast_donors_idx = random.sample(list(range(len(blast_donors))), len(blast_donors))
+    mixed_donors_idx = random.sample(list(range(len(mixed_donors))), len(mixed_donors))
+    print(f'healthy_donors_idx, blast_donors_idx, mixed_donors_idx: {healthy_donors_idx}, {blast_donors_idx},{mixed_donors_idx}')
+
+    print(f'Seting Train, Validation and Test idx...')
+    # just divide accoding to the sampled indexes
+    train_donors_idx, val_donors_idx, test_donors_idx = splitting(healthy_donors, blast_donors, mixed_donors, healthy_donors_idx, blast_donors_idx, mixed_donors_idx, set_division = set_division)
+    print(train_donors_idx, val_donors_idx, test_donors_idx)
+
+    return train_donors_idx, val_donors_idx, test_donors_idx
+
+    
+'========================================================================================================================================'
+
+def donation_extraction(donors_idx, multiple_donations, ALL_DATASETS):
+    """ Retrieves specific donors datasets (for ex. donors for train) from all datasets list """
+    datasets_extracted = []
+    for donor in donors_idx:
+        donor_datasets = multiple_donations[donor]
+        #print(donor_datasets)
+        donor_donations = []
+        for donation in donor_datasets:
+            donation_dataset = ALL_DATASETS[donation].drop(columns = ['Original_ID'])
+            
+            donor_donations.append(donation_dataset)
+            
+        datasets_extracted.append(donor_donations)
+    return datasets_extracted
+
