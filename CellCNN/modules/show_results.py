@@ -1516,3 +1516,81 @@ def elaborate_data_for_box_violin(save_robust_dir, threshold = 0.5):
     plot_data, boxplot_data, _ = final_trials_prediction(test_total_trial_pred_lists,
                             per_donor_original_test_y, per_donor_resampled_test_y, threshold)
     return plot_data, boxplot_data
+
+def retrieve_mean_std(thesis_images_dir, exp_names, metric = 'f1', function = 'mean'):
+
+    type_classification = ['DIR', 'ROC', 'RES']
+    if function == 'mean':
+        pos = 0
+    else:
+        pos = 1
+
+    tot_exp_std_list = []
+    for exp_name in exp_names:
+        std_f1_list = []
+        for class_type in type_classification:
+            tables_dir = f'{thesis_images_dir}/mean_std_tables_{exp_name}/{class_type}/'
+            os.makedirs(tables_dir, exist_ok=True)
+
+            with open(os.path.join(tables_dir, 'all_lopo_mean_std_dict.pkl'), 'rb') as f:
+                    all_lopo_mean_std_dict = pkl.load(f)
+            with open(os.path.join(tables_dir, 'across_lopo_mean_std_dict.pkl'), 'rb') as f:
+                    across_lopo_mean_std_dict = pkl.load(f)
+            if class_type: # == 'DIR':
+                f1_std_dir = all_lopo_mean_std_dict[metric][pos]
+                std_f1_list.append(f1_std_dir)
+
+            f1_std_ens = across_lopo_mean_std_dict[metric][pos]
+            std_f1_list.append(f1_std_ens)
+
+        tot_exp_std_list.append(std_f1_list)
+    return tot_exp_std_list
+
+def show_metrics_mean_std(tot_exp_mean_list, tot_exp_std_list, title=None, name_fig=None, save_dir=None, y_label = None):
+
+    x_labels = ['Exp 1\n(AS, Single-Split)', 'Exp 2\n(NO AS, Single-Split)', 'Exp 3\n(AS, Ensemble)', 'Exp 4\n(NO AS, Ensemble)']
+    bar_labels = ['Seed/Fold-Level (0.5)', 'Single-Split/Ensemble (0.5)', 'Seed/Fold-Level (ROC)', 'Single-Split/Ensemble (ROC)', 'Seed/Fold-Level (RES)', 'Single-Split/Ensemble (RES)']
+    colors = ['steelblue', 'skyblue', 'tomato', 'lightsalmon', 'mediumseagreen', 'lightgreen']
+
+    n_groups = len(tot_exp_mean_list)
+    n_bars = len(bar_labels)
+    bar_width = 0.135
+    x = np.arange(n_groups)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    for j in range(n_bars):
+        values = [tot_exp_mean_list[i][j] for i in range(n_groups)]
+        errors = [tot_exp_std_list[i][j]  for i in range(n_groups)]
+        offset = (j - n_bars / 2 + 0.5) * bar_width
+        bars = ax.bar(x + offset, values, width=bar_width,
+                      color=colors[j], label=bar_labels[j],
+                      edgecolor='black', linewidth=0.8,
+                      yerr=errors, capsize=3,
+                      error_kw=dict(ecolor='black', elinewidth=0.8, capthick=0.8))
+
+        for bar, err in zip(bars, errors):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, height + err + 0.02,
+                    f'{height:.3f}', ha='center', va='bottom', fontsize=6, rotation=90)
+
+    ax.set_ylim(0, 1.25)
+    ax.set_xticks(x)
+    ax.set_xticklabels(x_labels, fontsize=10)
+    if y_label is None:
+        y_label = 'Score'
+    ax.set_ylabel(y_label, fontsize=11)
+
+    if title is None:
+        title = 'Metric across Experiments'
+
+
+    ax.set_title(title, fontsize=12)
+    #ax.legend(fontsize=8, bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0)
+    ax.legend(fontsize=8, loc='lower right', borderaxespad=1, framealpha = 1)
+    plt.tight_layout()
+    if save_dir is not None:
+        if name_fig is None:
+            name_fig = 'metric_across_experiments'
+        plt.savefig(f'{save_dir}/{name_fig}.pdf', format = 'pdf')
+    plt.show()
