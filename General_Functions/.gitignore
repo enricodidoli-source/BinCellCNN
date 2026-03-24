@@ -1,8 +1,0 @@
-# Ignore Jupyter checkpoints
-.ipynb_checkpoints/
-
-# Ignore cache Python
-__pycache__/
-*.pyc
-
-Old_General_Function/
