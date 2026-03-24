@@ -29,5 +29,9 @@ General_Functions/__pycache__/
 General_Functions/not_to_push/
 
 # Ignore CSNN folder
-CSNN
-CSNN
+CSNN/
+
+
+
+# Ignore Not_Final_CellCNN folder
+Not_Final_CellCNN/
