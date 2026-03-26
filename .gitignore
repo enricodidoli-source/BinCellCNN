@@ -32,6 +32,10 @@ General_Functions/not_to_push/
 CSNN/
 
 
+# Ignore General_Functions folder
+General_Functions/
 
 # Ignore Not_Final_CellCNN folder
 Not_Final_CellCNN/
+
+git

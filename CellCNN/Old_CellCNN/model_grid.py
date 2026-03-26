@@ -14,11 +14,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 import random
 
-from utils import combine_samples, normalize_outliers_to_control
-from utils import cluster_profiles, keras_param_vector
-from utils import generate_subsets, generate_biased_subsets
-from utils import get_filters_classification, get_filters_regression
-from utils import mkdir_p
+from cellcnn_utils import combine_samples, normalize_outliers_to_control
+from cellcnn_utils import cluster_profiles, keras_param_vector
+from cellcnn_utils import generate_subsets, generate_biased_subsets
+from cellcnn_utils import get_filters_classification, get_filters_regression
+from cellcnn_utils import mkdir_p
+
 
 import tensorflow as tf
 from tensorflow import keras
@@ -39,11 +40,7 @@ class CellCnn(object):
             each input sample, if `per_sample` = `True`.
         - per_sample :
             Whether the `nsubset` argument refers to each class or each input sample.
-            For regression problems, it is automatically set to `True`.
-        - subset_selection :
-            Can be 'random' or 'outlier'. Generate multi-cell inputs uniformly at
-            random or biased towards outliers. The latter option is only relevant for detection of
-            extremely rare (frequency < 0.1%) cell populations.
+
         - maxpool_percentages :
             A list specifying candidate percentages of cells that will be max-pooled per
             filter. For instance, mean pooling corresponds to `maxpool_percentages` = `[100]`.
@@ -52,14 +49,10 @@ class CellCnn(object):
         - scale :
             Whether to z-transform each feature (mean = 0, standard deviation = 1) prior to
             training.
-        - quant_normed :
-            Whether the input samples have already been pre-processed with quantile
-            normalization. In this case, each feature is zero-centered by subtracting 0.5.
+
         - nrun :
             Number of neural network configurations to try (should be set >= 3).
-        - regression :
-            Set to `True` for a regression problem. Default is `False`, which corresponds
-            to a classification setting.
+
         - learning_rate :
             Learning rate for the Adam optimization algorithm. If set to `None`,
             learning rates in the range [0.001, 0.01] will be tried out.
@@ -86,22 +79,20 @@ class CellCnn(object):
             models pass the accuracy threshold, keep filters from the best 3 models.
     """
 
-    def __init__(self, ncell=200, nsubset=1000, per_sample=False, subset_selection='random',
-                 maxpool_percentages=None, scale=True, quant_normed=False,
+    def __init__(self, ncell=200, nsubset=1000, per_sample=False,
+                 maxpool_percentages=None, scale=True,
                  nfilter_choice=None, dropout='auto', dropout_p=.5,
-                 coeff_l1=0, coeff_l2=0.0001, learning_rate=None,
-                 regression=False, max_epochs=20, patience=5, nrun=15, dendrogram_cutoff=0.4,
-                 accur_thres=.95, verbose=1, seed = 42, grid = False):
+                 coeff_l1=0, coeff_l2=0.0001, learning_rate=None, 
+                 max_epochs=20, patience=5, nrun=15, seed = 42, grid = False,
+                 
+                 dendrogram_cutoff=0.4, accur_thres=.95, verbose=1):
 
         # initialize model attributes
         self.scale = scale
-        self.quant_normed = quant_normed
         self.nrun = nrun
-        self.regression = regression
         self.ncell = ncell
         self.nsubset = nsubset
         self.per_sample = per_sample
-        self.subset_selection = subset_selection
         self.maxpool_percentages = maxpool_percentages
         self.nfilter_choice = nfilter_choice
         self.learning_rate = learning_rate
@@ -111,23 +102,22 @@ class CellCnn(object):
         self.dropout_p = dropout_p
         self.max_epochs = max_epochs
         self.patience = patience
-        self.dendrogram_cutoff = dendrogram_cutoff
-        self.accur_thres = accur_thres
-        self.verbose = verbose
         self.results = None
         self.model_sorted_idx = None
         self.seed = seed
-        self.resampled =  None
         self.grid = grid
+
+        self.dendrogram_cutoff = dendrogram_cutoff
+        self.accur_thres = accur_thres
+        self.verbose = verbose
+
+        
 
         self.all_params = {}
         self.all_params['scale'] = self.scale
-        self.all_params['quant_normed'] = self.quant_normed
-        self.all_params['regression'] = self.regression
         self.all_params['nsubset'] = self.nsubset
         self.all_params['ncell'] = self.ncell
         self.all_params['per_sample'] = self.per_sample
-        self.all_params['subset_selection'] = self.subset_selection
         self.all_params['maxpool_percentages'] = self.maxpool_percentages
         self.all_params['nfilter_choice'] = self.nfilter_choice
         self.all_params['learning_rate'] = self.learning_rate
@@ -137,14 +127,12 @@ class CellCnn(object):
         self.all_params['dropout_p'] = self.dropout_p
         self.all_params['max_epochs'] = self.max_epochs
         self.all_params['patience'] = self.patience
-        self.all_params['dendrogram_cutoff'] = self.dendrogram_cutoff
-        self.all_params['accur_thres'] = self.accur_thres
-        self.all_params['verbose'] = self.verbose
-        self.all_params['resampled'] = self.resampled
         self.all_params['seed'] = self.seed
         self.all_params['grid'] = self.grid
         
-        
+        self.all_params['dendrogram_cutoff'] = self.dendrogram_cutoff
+        self.all_params['accur_thres'] = self.accur_thres
+        self.all_params['verbose'] = self.verbose     
         
         
         
@@ -187,9 +175,8 @@ class CellCnn(object):
 
         res = train_model(train_samples, train_phenotypes, outdir,
                           valid_samples, valid_phenotypes,
-                          scale=self.scale, regression = self.regression, 
+                          scale=self.scale, 
                           ncell=self.ncell, nsubset=self.nsubset, per_sample=self.per_sample,
-                          subset_selection=self.subset_selection,
                           maxpool_percentages=self.maxpool_percentages,
                           nfilter_choice=self.nfilter_choice,
                           learning_rate=self.learning_rate,
@@ -259,8 +246,7 @@ class CellCnn(object):
             # build the model architecture
             model = build_model(ncell_per_sample, nmark,
                                 nfilter=nfilter, coeff_l1=0, coeff_l2=0,
-                                k=ncell_pooled, dropout=False, dropout_p=0,
-                                regression=self.regression, n_classes=n_classes, lr=0.01)
+                                k=ncell_pooled, dropout=False, dropout_p=0, n_classes=n_classes, lr=0.01)
 
             # and load the learned filter and output weights
             weights = self.results['best_3_nets'][i_enum]
@@ -320,8 +306,8 @@ def grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate):
     
 def train_model(train_samples, train_phenotypes, outdir,
                 valid_samples=None, valid_phenotypes=None, generate_valid_set = False,
-                scale=True, regression = False,
-                ncell=200, nsubset=1000, per_sample=False, subset_selection='random',
+                scale=True,
+                ncell=200, nsubset=1000, per_sample=False,
                 maxpool_percentages=None, nfilter_choice=None,
                 learning_rate=None, coeff_l1=0, coeff_l2=1e-4, dropout='auto', dropout_p=.5,
                 max_epochs=20, patience=5,
@@ -408,10 +394,9 @@ def train_model(train_samples, train_phenotypes, outdir,
     # generate multi-cell inputs
     logger.info("Generating multi-cell inputs...")
 
-    if subset_selection != 'outlier':
-        # generate 'nsubset' multi-cell inputs per input sample
+
         
-        if labels:
+    if labels:
             print(f'Start generating subsets elabortating samples WITH label column')
             
             X_tr, y_tr, S, y_train_resampled = generate_subsets(X_train, train_phenotypes, id_train,
@@ -420,7 +405,7 @@ def train_model(train_samples, train_phenotypes, outdir,
             if (valid_samples is not None) or generate_valid_set:
                 X_v, y_v, S, y_valid_resampled = generate_subsets(X_valid, valid_phenotypes, id_valid,
                                             nsubset, ncell, per_sample, seed = seed + nsubset + 100)
-        else:
+    else:
             print(f'Start generating subsets elabortating samples WITHOUT label column')
             X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
                                           nsubset, ncell, per_sample, seed=seed, labels = False)
@@ -429,8 +414,8 @@ def train_model(train_samples, train_phenotypes, outdir,
             if (valid_samples is not None) or generate_valid_set:
                 X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
                                             nsubset, ncell, per_sample, seed=seed + nsubset + 100, labels = False)
-        print(f'Number of training subsets generated: {len(X_v[0])}')
-        print(f'Number of validation subsets generated: {len(X_tr[0])}')
+            print(f'Number of training subsets generated: {len(X_v[0])}')
+            print(f'Number of validation subsets generated: {len(X_tr[0])}')
                 
     # neural network configuration
     # batch size
@@ -449,10 +434,9 @@ def train_model(train_samples, train_phenotypes, outdir,
         X_v = np.swapaxes(X_v, 2, 1)
     n_classes = 1
 
-    if not regression:
-        n_classes = len(np.unique(train_phenotypes))
-        y_tr = keras.utils.to_categorical(y_tr, n_classes)
-        if valid_samples is not None  or generate_valid_set:
+    n_classes = len(np.unique(train_phenotypes))
+    y_tr = keras.utils.to_categorical(y_tr, n_classes)
+    if valid_samples is not None  or generate_valid_set:
             y_v = keras.utils.to_categorical(y_v, n_classes)
 
 
@@ -532,14 +516,13 @@ def train_model(train_samples, train_phenotypes, outdir,
         # ============================================= #
         model = build_model(ncell, nmark, nfilter,
                             coeff_l1, coeff_l2, k,
-                            dropout, dropout_p, regression, n_classes, lr)
+                            dropout, dropout_p, n_classes, lr)
         
         #### weights saving ####
         filepath = os.path.join(outdir, f"nnet_run_{irun}.weights.h5")
         try:
             
-            if not regression:
-                if valid_samples is not None  or generate_valid_set:
+            if valid_samples is not None  or generate_valid_set:
                     # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
                     # (save_best_only tells to the function to save only the est result)
                     check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
@@ -557,37 +540,21 @@ def train_model(train_samples, train_phenotypes, outdir,
                     print(f"Performed epochs: {actual_epochs}")
                     epochs_num.append(actual_epochs) # store number of epochs
                 
-                else:
+            else:
                     check = callbacks.ModelCheckpoint(filepath, monitor='loss', save_best_only=True,
                                       mode='min', save_weights_only=True) 
                     model.fit(X_tr, y_tr,
                             epochs=max_epochs, batch_size=bs, callbacks=[check], verbose=verbose)
                 
-            else:
-                check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
-                                  mode='auto', save_weights_only=True)
-                earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
-                
 
-                model.fit(X_tr, y_tr,
-                          epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
-                          validation_data=(X_v, y_v), verbose=verbose)
 
             # load the model from the epoch with highest validation accuracy
             model.load_weights(filepath)
 
-            if not regression:
-                if valid_samples is not None  or generate_valid_set:
+            if valid_samples is not None  or generate_valid_set:
                     valid_metric = model.evaluate(X_v, y_v, verbose=0)[-1] # test the model on the validation set
                     logger.info(f"Best validation F1-score: {valid_metric[1]:.2f}")
                     accuracies[irun] = valid_metric[1]
-
-            else:
-                train_metric = model.evaluate(X_tr, y_tr, batch_size=bs, verbose=0) 
-                logger.info(f"Best train loss: {train_metric:.2f}")
-                valid_metric = model.evaluate(X_v, y_v, batch_size=bs, verbose=0)
-                logger.info(f"Best validation loss: {valid_metric:.2f}")
-                accuracies[irun] = - valid_metric
 
             # extract the network parameters
             w_store[irun] = model.get_weights()
@@ -637,35 +604,28 @@ def train_model(train_samples, train_phenotypes, outdir,
     
     if labels:
         results['y_labels_resampled'] = y_train_resampled
-        results['resampled'] = resampled
 
     if valid_samples is not None:
       if (w_cons is not None):
         maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
-        if regression:
-            tau = get_filters_regression(w_cons, z_scaler, valid_samples, valid_phenotypes,
-                                         maxpool_percentage)
-            results['filter_tau'] = tau
 
-        else:
-            if labels:
+        if labels:
                 valid_no_labels = []
                 for df in valid_samples:
                     valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
                 valid_samples = valid_no_labels
 
                 
-            #print(f'\nafter valid_no_labels: {valid_no_labels}')    
-            filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
+        filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
                                                      valid_phenotypes, maxpool_percentage)
-            results['filter_diff'] = filter_diff
+        results['filter_diff'] = filter_diff
 
     
     return results 
 
 
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
-                k, dropout, dropout_p, regression, n_classes, lr=0.01, seed=42):
+                k, dropout, dropout_p, n_classes, lr=0.01, seed=42):
     """ Builds the neural network architecture """
 
     # the input layer
@@ -693,29 +653,19 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
         pooled = layers.Dropout(rate=dropout_p)(pooled)
 
     # network prediction output
-    if not regression:
-        output = layers.Dense(units=n_classes, # one node for each class
+    output = layers.Dense(units=n_classes, # one node for each class
                               activation='softmax',
                               kernel_initializer='random_uniform',
                               kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2),
                               name='output')(pooled)
-    else:
-        output = layers.Dense(units=1,
-                              activation='linear',
-                              kernel_initializer='random_uniform',
-                              kernel_regularizer=regularizers.l1_l2(l1=coeff_l1, l2=coeff_l2),
-                              name='output')(pooled)
+
     model = keras.Model(inputs=data_input, outputs=output)
 
-    if not regression:
-        #import tensorflow_addons as tfa
-        f1_score = keras.metrics.F1Score(average=None, threshold=None, name="f1_score", dtype=None)
-        model.compile(optimizer=optimizers.Adam(learning_rate=lr),
+    f1_score = keras.metrics.F1Score(average=None, threshold=None, name="f1_score", dtype=None)
+    model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='categorical_crossentropy',
-                      metrics = [f1_score])#['accuracy'])
-    else:
-        model.compile(optimizer=optimizers.Adam(learning_rate=lr),
-                      loss='mean_squared_error')
+                      metrics = [f1_score])
+
     return model
 
 

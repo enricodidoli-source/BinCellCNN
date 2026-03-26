@@ -7,21 +7,25 @@ import sys
 
 
 
-def train_CellCNN_old(CellCnn, train_datasets, train_y, test_datasets_no_labels,
+def train_CellCNN_old(CellCnn, train_datasets, train_y,
                       n_cell = 10, nsubset = 50, max_epochs=5, nrun=1, seed = 42, hyper = None, 
                       val_datasets = None, val_y = None, 
-                      generate = False, grid = False):
-        
+                      generate = False, grid = False, outdir = None):
+    """
+    Trains CellCNN models. Uses default hyperparameters if none are provided,
+    otherwise unpacks nfilter, maxpool_percentages and learning_rate from hyper.
+    Supports optional validation set and generate mode.
+    """
     if hyper is None:
         print('Warning: no hyperparameters passed. Hyperparameters fixed:')
         print('nfilter = [3,5,7,9]')
         print('maxpool_p = [1., 5., 20., 100.]')
         print('learning_r = [0.01, 0.001]')
+        nfilter = [3,5,7,9]
+        maxpool_p = [1., 5., 20., 100.]
+        learning_r = [0.01, 0.001]
     else:
         nfilter, maxpool_p, learning_r = hyper
-    
-    
-    print(f'Seed used: {seed}: {type(seed)}')
 
     model = CellCnn(
         ncell = n_cell, #200                # Number of cells per multi-cell input (sampled from the 'patient' datasets)
@@ -33,17 +37,15 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, test_datasets_no_labels,
         max_epochs = max_epochs, #50
         patience=5,                         # Early stopping patience
         nrun = nrun,  #15                   # Number of neural network configurations to try (for Hyperparameter optimization)
-        regression=False,                   # classification 
         scale=True,                         # Z-score normalization
         verbose=1,
         seed = int(seed),
         grid = grid
     )
 
-    print(f'Model defined...')
-    print(f'Fitting started...')
-    
-    outdir = f'/content/cellcnn_results'  # Results Directory
+    if outdir is None:
+        outdir = f'/content/cellcnn_results'  # Results Directory
+        
     if val_datasets is not None:
         model.fit(
                 train_samples = train_datasets,
@@ -63,7 +65,10 @@ def train_CellCNN_old(CellCnn, train_datasets, train_y, test_datasets_no_labels,
     return model
     
 def test_CellCNN_old(model, test_datasets_no_labels, seed = None):
-    print(f'Prediction started...')
+    """
+    Runs prediction on test datasets using a trained CellCNN model.
+    Optionally passes a seed to model.predict.
+    """
     if seed is not None:
         test_pred = model.predict((test_datasets_no_labels), seed = seed)
     else:
@@ -76,16 +81,17 @@ def test_CellCNN_old(model, test_datasets_no_labels, seed = None):
 '========================================================================================================================================'
 
 
-def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
-                     test_datasets_no_labels, 
+def trials_train_CellCNN_old(CellCnn, train_datasets, train_y, 
                     trials = 10, max_epochs = 50, nrun = 15, 
                     n_cell = 100000, nsubset = 50, seed_list = None, hyper = None, val_datasets = None, val_y = None, 
-                             generate = False, grid = False):   # generate produces a validation set avoiding split of the same patient
-    
+                             generate = False, grid = False, outdir = None):   
+    """
+    Runs multiple training weights initializations of CellCNN, each with a different seed.
+    If seed_list is missing or too short, generates one randomly.
+    """
     models_lists = []
     if (seed_list is None) or (len(seed_list) < trials):
-        
-        if len(seed_list) < trials:
+        if seed_list is not None and len(seed_list) < trials:
             print(f'Warning: seed_list is None or has not the adeguate length: {len(seed_list)} instead of {trials}.\n')
             
         seed_list = random.choices(list(range(1, 100000)), k=trials)
@@ -94,30 +100,34 @@ def trials_train_CellCNN_old(CellCnn, train_datasets, train_y,
     
 
     for i in range(trials):
-        print(f'Trial {i+1} started')
+        print(f'Weight initialization {i+1} started')
         training_seed = seed_list[i]
         print(f'Seed used: {training_seed}')
         if val_datasets is not None:
-            model = train_CellCNN_old(CellCnn, train_datasets, train_y,  test_datasets_no_labels,
-                                                        n_cell, nsubset, max_epochs, nrun, training_seed, hyper = hyper, 
-                                      val_datasets = val_datasets, val_y = val_y, generate = False,  grid = grid)
+            model = train_CellCNN_old(CellCnn, train_datasets, train_y, 
+                                      n_cell, nsubset, max_epochs, nrun, training_seed, hyper = hyper, 
+                                      val_datasets = val_datasets, val_y = val_y, generate = False,  grid = grid, outdir = outdir)
     
         else:
-            model = train_CellCNN_old(CellCnn, train_datasets, train_y, #val_datasets, val_y, 
-                                      test_datasets_no_labels,
-                                      n_cell, nsubset, max_epochs, nrun, training_seed, hyper = hyper, generate = generate, grid = grid)
+            model = train_CellCNN_old(CellCnn, train_datasets, train_y,
+                                      n_cell, nsubset, max_epochs, nrun, training_seed, hyper = hyper, generate = generate, grid = grid, outdir = outdir)
         models_lists.append(model)
     return models_lists
     
 def trials_test_CellCNN_old(models_lists, test_datasets_no_labels, seed_list = None):
+    
+    """
+    Runs prediction across multiple trained CellCNN models (seeds).
+    If seed_list is missing or too short, generates one randomly.
+    """
     predictions_list = []
     results_list = [] 
     tot_trials = len(models_lists)
     
     if (seed_list is None) or (len(seed_list) < tot_trials):
         
-        if len(seed_list) < tot_trials:
-            print(f'Warning: seed_list is None or has not the adeguate length: {len(seed_list)} instead of {tot_trials}.\n')
+        if seed_list is not None and len(seed_list) < tot_trials:
+            print(f'Warning: seed_list is None or has not the adequate length: {len(seed_list)} instead of {tot_trials}.\n')
             
         seed_list = random.choices(list(range(1, 100000)), k=tot_trials)
         print(f'seed_list is randomly set = {seed_list}.\n')
@@ -126,7 +136,7 @@ def trials_test_CellCNN_old(models_lists, test_datasets_no_labels, seed_list = N
         
                                    
     for i in range(tot_trials):
-        print(f'Trial {i+1} out of {tot_trials} started!')
+        print(f'Weight Initialization {i+1} out of {tot_trials} started!')
         prediction, result = test_CellCNN_old(models_lists[i], test_datasets_no_labels, seed = seed_list[i])
         
         predictions_list.append(prediction)
