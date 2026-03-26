@@ -351,7 +351,7 @@ def generate_dict_comb_3d(LOPO_folds, tuning_exp_pat):
     ncells_per_fold = []
     nsubs_per_fold = []
     f1_score_per_fold = []
-    for LOPO_idx, _ in enumerate(LOPO_folds):
+    for LOPO_idx in range(LOPO_folds):
 
         tuning_load_dir = f'{tuning_exp_pat}/outer_fold_{LOPO_idx}/tuning/results'
 
