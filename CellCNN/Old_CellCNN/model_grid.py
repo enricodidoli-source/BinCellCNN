@@ -24,6 +24,7 @@ from cellcnn_utils import mkdir_p
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, initializers, regularizers, optimizers, callbacks
+from tensorflow.keras import backend as K
 
 logger = logging.getLogger(__name__)
 
@@ -468,6 +469,7 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     
     epochs_num = []
+    histories = []
     base_run_seed = seed + 10000
     for irun in range(nrun):
         
@@ -538,8 +540,9 @@ def train_model(train_samples, train_phenotypes, outdir,
 
                     actual_epochs = len(history.history['loss'])
                     print(f"Performed epochs: {actual_epochs}")
+
                     epochs_num.append(actual_epochs) # store number of epochs
-                
+                    histories.append(history)
             else:
                     check = callbacks.ModelCheckpoint(filepath, monitor='loss', save_best_only=True,
                                       mode='min', save_weights_only=True) 
@@ -599,7 +602,8 @@ def train_model(train_samples, train_phenotypes, outdir,
         'best_net': best_net,
         'w_best_net': w_best_net,
         'best_model_index': best_accuracy_idx,
-        'epochs_num': epochs_num
+        'epochs_num': epochs_num,
+        'history': histories
     }
     
     if labels:
@@ -668,28 +672,23 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
 
     return model
 
-
-import tensorflow as tf
-from tensorflow.keras import backend as K
+@keras.utils.register_keras_serializable()
 def pool_top_k(x, k=10):
     """
     Pooling che seleziona i top k valori per ogni feature lungo l'asse delle celle
     """
-    # Assicuriamoci che k sia un intero
+    # k must be an integer
     if isinstance(k, tf.Tensor):
         k = int(k.numpy())
     k = int(k)
 
-    # Limita k al numero massimo di celle disponibili
-    n_cells = tf.shape(x)[1]  # axis=1 è l'asse delle celle
+    # k cannot be greater than the number of cells
+    n_cells = tf.shape(x)[1] 
     k = tf.minimum(k, n_cells)
 
-    # Trova i top k valori lungo l'asse delle celle (axis=1)
+    # Finds top k elements
     top_k_values, _ = tf.nn.top_k(tf.transpose(x, [0, 2, 1]), k=k, sorted=True)
-    # Dopo transpose: (batch, n_filter, n_cell)
-    # top_k restituisce: (batch, n_filter, k)
 
-    # Calcola la media e trasponi per tornare a (batch, n_filter)
     result = tf.reduce_mean(top_k_values, axis=2)
 
     return result
