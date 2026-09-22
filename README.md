@@ -2,6 +2,16 @@
  
 ---
 
+> ⚠️ **Project Status: Work in Progress (WIP) & Refactoring**
+> 
+> Welcome! This repository contains the code developed for my Master's Thesis, which is currently undergoing a major expansion.
+> 
+> To keep the development organized, this repository is split into two main branches:
+> * **[`thesis-version` branch](https://github.com/enricodidoli-source/master-thesis/tree/thesis-version)**: Contains the exact, finalized code presented for my graduation.
+> * **`main` branch (Current)**: Contains the experimental work. Please note that the code and Jupyter notebooks here might be unstructured (e.g., containing testing cells, logs, and isolated functions) as I am actively experimenting and refactoring. A full code cleanup and standardization will follow this exploratory phase.
+
+---
+
 ## Overview
  
 This repository contains the code developed for my Master's thesis on **Measurable Residual Disease (MRD) detection** in B-cell Acute Lymphoblastic Leukaemia (B-ALL) using the **CellCNN** neural network architecture applied to multiparameter flow cytometry (MFC) data.
