@@ -16,8 +16,8 @@ from sklearn.metrics import (
 )
 
 # Import dai tuoi moduli interni
-from src.cell_level.cell_level_utils import clear_RAM
-from src.cell_level.networks_ops import get_filter_prob
+from cell_level.cell_level_utils import clear_RAM
+from cell_level.networks_ops import get_filter_prob
 
 def get_best_thr(true_cells_labels, pred_probs, show = False):
     """Calculates the optimal threshold that maximizes the F1-score."""

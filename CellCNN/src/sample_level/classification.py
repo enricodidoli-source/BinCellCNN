@@ -3,7 +3,7 @@ from classification import robust_prediction_labelling, seed_level_robust_predic
 from classification import find_robust_threshold, compute_metrics, compute_mean_std_metrics
 '''
 
-from utils import flatten
+from sample_level.utils import flatten
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score

@@ -7,7 +7,7 @@ from itertools import zip_longest
 import pandas as pd
 import numpy as np
 
-from timepoints_elaboration import donor_division
+from sample_level.timepoints_elaboration import donor_division
 
 def remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors,  test_donors_idx):
     """

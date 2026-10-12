@@ -5,8 +5,8 @@ from training import run_training, val_res_pred, train_val_finalizing, test_res_
 import pandas as pd
 import numpy as np
 
-from utils import flatten, remove_labels, subset_sampling, generate_seeds, sub_resampling_list
-from run_models import trials_train_CellCNN_old, trials_test_CellCNN_old
+from sample_level.utils import flatten, remove_labels, subset_sampling, generate_seeds, sub_resampling_list
+from sample_level.run_models import trials_train_CellCNN_old, trials_test_CellCNN_old
 
 
 

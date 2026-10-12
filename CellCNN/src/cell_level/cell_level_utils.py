@@ -10,8 +10,8 @@ from pathlib import Path
 import pandas as pd
 
 from model_grid import CellCnn
-from timepoints_elaboration import load_data, donation_extraction
-from utils import load_models, retrieve_labels
+from sample_level.timepoints_elaboration import load_data, donation_extraction
+from sample_level.utils import load_models, retrieve_labels
 
 
 def clear_RAM():

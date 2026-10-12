@@ -4,28 +4,28 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 
-from src.cell_level.cell_level_utils import clear_RAM, extract_data_from_fold
+from cell_level.cell_level_utils import clear_RAM, extract_data_from_fold
 
 
-from src.cell_level.networks_ops import (
+from cell_level.networks_ops import (
     get_full_network_prob, 
     get_filter_prob, 
     logit
 )
-from src.cell_level.filter_selection import (
+from cell_level.filter_selection import (
     retrieve_filters_scalers,
     select_clustered_filters, 
     rebuild_metadata,         
     apply_backup_if_needed
 )
-from src.cell_level.evaluation import (
+from cell_level.evaluation import (
     evaluate_single_filter, 
     get_best_thr, 
     get_metrics_df
 )
 
-from timepoints_elaboration import donation_extraction
-from utils import flatten, retrieve_labels
+from sample_level.timepoints_elaboration import donation_extraction
+from sample_level.utils import flatten, retrieve_labels
 
 
 

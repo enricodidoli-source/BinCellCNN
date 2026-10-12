@@ -9,9 +9,9 @@ from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 from scipy.spatial.distance import squareform
 
 # Import dai tuoi moduli interni
-from src.cell_level.cell_level_utils import clear_RAM
+from cell_level.cell_level_utils import clear_RAM
 
-from src.cell_level.networks_ops import extract_filters_from_net
+from cell_level.networks_ops import extract_filters_from_net
 
 
 def cluster_filters(all_best_filters, show_plot = True):

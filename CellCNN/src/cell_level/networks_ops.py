@@ -1,4 +1,4 @@
-from src.cell_level.cell_level_utils import clear_RAM
+from cell_level.cell_level_utils import clear_RAM
 import numpy as np
 import pandas as pd
 
