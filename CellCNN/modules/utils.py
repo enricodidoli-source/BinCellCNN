@@ -10,6 +10,8 @@ import pickle
 import os
 import sys
 
+
+
 def remove_from_cache(files: list):
     for file in files:
         if file in sys.modules:
@@ -94,7 +96,7 @@ def retrieve_labels(datasets_extracted, remove = False, flat = False):
     return per_donor_original_datasets, per_donor_original_y
 
 
-def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc = False, log = False):
+def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc = False, log = False, decimals = 2):
     """
     Computes and shows the blast cell percentage for each sample across all patients.
     Optionally returns the percentage list.
@@ -107,7 +109,7 @@ def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc =
 
             dataset = ALL_DATASETS[sample]
             blast_n = (dataset['IsBlast'] == 1).sum()
-            tot_perc_list.append(round((blast_n/len(dataset))*100, 2))
+            tot_perc_list.append(round((blast_n/len(dataset))*100, decimals))
             if log:
                 print(f'sample: {sample}: {round((blast_n/len(dataset))*100, 2)}')
 

@@ -43,12 +43,13 @@ def filters_selection_phase(cross_val_models_list, train_kfolds, multiple_donati
                                                                                     fold_loaded_models_lists, LOPOCV_fold_idx, DIST_THRESHOLD, FILTER_SEL_THRESHOLD)
 
             all_filters_metadata += filters_metadata
+
         else:
         
             selected_filters_metadata = rebuild_metadata(all_filter_metadata_df, cv,  DIST_THRESHOLD, FILTER_SEL_THRESHOLD)
 
         all_selected_filters_metadata += selected_filters_metadata
-
+        
     filter_metadata_df = apply_backup_if_needed(pd.DataFrame(all_selected_filters_metadata))
 
     clear_RAM()
@@ -56,7 +57,9 @@ def filters_selection_phase(cross_val_models_list, train_kfolds, multiple_donati
     if all_filter_metadata_df is None:
         all_filter_metadata_df = pd.DataFrame(all_filters_metadata)
 
-    return filter_metadata_df, all_filter_metadata_df
+        return filter_metadata_df, all_filter_metadata_df
+        
+    return filter_metadata_df
 
 
 
@@ -67,6 +70,7 @@ def evaluate_folds_filters(train_kfolds, cv, multiple_donations, ALL_DATASETS, f
 
     _, val_pat = train_kfolds[cv]
     comprehensive_val_df, true_cells_labels = extract_data_from_fold(val_pat, multiple_donations, ALL_DATASETS)
+
     all_best_filters, all_scalers = retrieve_filters_scalers(fold_loaded_models_lists) # seed/net/filter
 
     filters_metadata = []
@@ -99,7 +103,7 @@ def evaluate_folds_filters(train_kfolds, cv, multiple_donations, ALL_DATASETS, f
 
 
 
-def best_cells_threshold_phase(filter_metadata_df, train_kfolds, multiple_donations, ALL_DATASETS, method='mean', show_plot = True,  max_cells = 10000000, random_state = 0):
+def best_cells_threshold_phase(filter_metadata_df, train_kfolds, multiple_donations, ALL_DATASETS, method='mean', show_plot = True,  max_cells = 10000000, random_state = 0, mem = None):
 
     all_cells_filtered = []
     all_cells_labels = []
@@ -133,7 +137,13 @@ def best_cells_threshold_phase(filter_metadata_df, train_kfolds, multiple_donati
             val_cells_probs = compute_mean_cells_probs(selected_filters, selected_scalers, comprehensive_val_df, compute_mean = False)
             val_cells_probs = logit(pd.DataFrame(val_cells_probs).T)
             val_scores = clf.predict_proba(val_cells_probs)[:, 1]
+            try:
+                ALL_DATASETS, = mem.load_variables(['ALL_DATASETS'])
 
+            except:
+                print('Variable not deleted')
+                pass
+                
         elif method == 'mean':
             val_scores = compute_mean_cells_probs(selected_filters, selected_scalers, comprehensive_val_df)
 
@@ -291,9 +301,15 @@ def analyse_single_filters(all_filter_metadata_df, FILTER_SEL_THRESHOLD, test_pa
 # ============================================
 
 
-def train_clf(train_pat, multiple_donations, ALL_DATASETS, selected_filters, selected_scalers, max_cells = None, random_state = 0):
+def train_clf(train_pat, multiple_donations, ALL_DATASETS, selected_filters, selected_scalers, max_cells = None, random_state = 0, mem = None):
 
     train_comprehensive_train_df, true_cells_labels = extract_data_from_fold(train_pat, multiple_donations, ALL_DATASETS)
+    try:
+        mem.save_and_clear([ALL_DATASETS], ['ALL_DATASETS'], )
+    except:
+        print('Variable not deleted')
+        pass
+
     print( len(train_comprehensive_train_df))
 
     if max_cells is None:

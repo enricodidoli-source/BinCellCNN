@@ -38,4 +38,12 @@ General_Functions/
 # Ignore Not_Final_CellCNN folder
 Not_Final_CellCNN/
 
+# Ignore experiments results
+experiments/
+
+# Ignore work in progress notebooks
+CellCNN/notebooks/refactoring_single_cell_detection.ipynb
+CellCNN/notebooks/refactoring_single_cell_detection (2).ipynb
+CellCNN/notebooks/Refactorization_3.ipynb
+
 git
