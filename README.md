@@ -15,10 +15,22 @@
 
 ## What's New (Post-Thesis Updates)
 
-* **Single-Cell Modules**: Added dedicated modules for single-cell classification analysis, which are located in the [`CellCNN/modules/src/cell_level/`](./CellCNN/modules/src/cell_level/) directory.
-* **Analysis Pipeline**: Introduced a new notebook to run the single-cell analysis end-to-end. You can explore it here: [`refactoring_single_cell_detection.ipynb`](./CellCNN/notebooks/refactoring_single_cell_detection.ipynb).
+- **Single-Cell Modules**: Dedicated modules for single-cell classification analysis, available in [`CellCNN/modules/src/cell_level/`](./CellCNN/modules/src/cell_level/).
+- **Analysis Pipeline**: Added an end-to-end notebook for single-cell evaluation and filtering: [`refactoring_single_cell_detection.ipynb`](./CellCNN/notebooks/refactoring_single_cell_detection.ipynb).
+- **Method Selection**: Evaluated filter aggregation strategies (`single`, `mean`, `logistic`, `top3`) across thresholds with Leave-One-Patient-Out Cross-Validation (LOPOCV). 
+
+### Key Findings (Preview)
+- **Aggregated vs. Single Filter**: Aggregation methods significantly reduce performance volatility compared to raw individual filters.
+- **Top Performer**: The `logistic` aggregation strategy (threshold `0.4`) demonstrated the strongest balance between F1-Score mean and statistical stability (highest 95% Confidence Interval lower bound).
+- **Full Report**: Comprehensive metrics, statistical validation, and comparative plots will be made available shortly in a dedicated technical report.
 ---
-  
+
+## Next Steps
+- **Filter Response Characterization**: Profiling and biological interpretation of activated CNN filters.
+- **Code Refactoring & Profiling**: Memory and runtime optimization of the thesis baseline.
+- **Production Pipeline**: End-to-end inference and decision pipeline.
+
+---
 ## Overview
  
 This repository contains the code developed for my Master's thesis on **Measurable Residual Disease (MRD) detection** in B-cell Acute Lymphoblastic Leukaemia (B-ALL) using the **CellCNN** neural network architecture applied to multiparameter flow cytometry (MFC) data.
