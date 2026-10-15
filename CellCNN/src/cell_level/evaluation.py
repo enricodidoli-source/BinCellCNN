@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import scipy.stats as stats
 from IPython.display import display
+import pickle
 
 # Metriche di classificazione
 from sklearn.metrics import (
@@ -18,6 +19,7 @@ from sklearn.metrics import (
 # Import dai tuoi moduli interni
 from cell_level.cell_level_utils import clear_RAM
 from cell_level.networks_ops import get_filter_prob
+from cell_level.cell_level_plotting import plot_total_boxplots
 
 def get_best_thr(true_cells_labels, pred_probs, show = False):
     """Calculates the optimal threshold that maximizes the F1-score."""
@@ -155,6 +157,136 @@ def add_classification_metrics(df):
     return df
 
 
+def apply_base_operations(results_dict, method_name, score='F1_Score'):
+    """
+    Compute descriptive statistics for each threshold/key
+    """
+    rows = []
+    for thr, df in results_dict.items():
+        vals = df[score]
+        rows.append({
+            'Threshold': thr,
+            'mean': vals.mean(),
+            'std': vals.std(),
+            'median': vals.median(),
+            'n_samples': len(vals)
+        })
+
+    grouped_df = pd.DataFrame(rows).set_index('Threshold')
+    
+    #Mean/standard deviation ratio
+    grouped_df['scaled_values'] = grouped_df['mean'] / grouped_df['std'].replace(0, np.nan)
+    grouped_df['Method'] = method_name
+
+    return grouped_df
+
+
+def pipeline_results(entire_pipeline_results, method_name, condition=1, 
+                     score='F1_Score', default_key='Default'):
+    """
+    Extract per-filter metrics from the LOPO folds for each threshold common to all folds.
+    """
+    if not entire_pipeline_results:
+        return {}, []
+
+    # Find the thresholds present in all folds
+    common_thresholds = set(entire_pipeline_results[0].keys())
+    for fold_dict in entire_pipeline_results[1:]:
+        common_thresholds.intersection_update(fold_dict.keys())
+    
+    # Sort thresholds, 'Default' first if present
+    threshold_list = sorted(list(common_thresholds), key=lambda x: (x != default_key, x))
+
+    method_results_dict = {}
+    stats_summary = []
+
+    for sel_thr in threshold_list:
+        # Extract and concatenate the folds for the current threshold
+        dfs = []
+        for fold_idx, fold in enumerate(entire_pipeline_results):
+            df_fold = add_classification_metrics(pd.DataFrame(fold[sel_thr]))
+            
+            if condition is not None:
+                df_fold = df_fold[df_fold['True_Label'] == condition]
+                
+            df_fold['Fold'] = fold_idx
+            dfs.append(df_fold)
+
+        df_concat = pd.concat(dfs, ignore_index=True)
+        fold_scores = df_concat.groupby('Fold')[score].mean().reset_index()
+        fold_scores['Threshold'] = str(sel_thr)
+
+        method_results_dict[sel_thr] = fold_scores
+
+        stats_summary.append({
+            'Threshold': sel_thr,
+            f'{score}_Mean': fold_scores[score].mean(),
+            f'{score}_Std': fold_scores[score].std()
+        })
+
+    return method_results_dict, stats_summary
+
+
+def find_best_method_thr(grouped_df, score='F1_Score'):
+    """
+    Select the best method and threshold using the lower bound of the 95% Student-t confidence interval.
+    """
+    df = grouped_df.copy()
+    
+    # Standard error and critical t value
+    df['Standard_Error'] = df['std'] / np.sqrt(df['n_samples'])
+    df['t_val'] = stats.t.ppf(0.975, df=df['n_samples'] - 1)
+    
+    # 95% confidence intervals
+    df[f'{score}_CI_Lower_95'] = df['mean'] - (df['t_val'] * df['Standard_Error'])
+    df[f'{score}_CI_Upper_95'] = df['mean'] + (df['t_val'] * df['Standard_Error'])
+
+    
+    candidates_df = df[df['Method'] != 'single'] # Exclude 'single'
+    
+    if candidates_df.empty:
+        raise ValueError("No candidates left")
+
+    best_idx_pos = candidates_df[f'{score}_CI_Lower_95'].argmax()
+    best_sel_thr = candidates_df.index[best_idx_pos]
+    best_method = candidates_df.iloc[best_idx_pos]['Method']
+
+    print(f"Best filter selection threshold = {best_sel_thr}")
+    print(f"Best Method = {best_method}")
+
+    return best_sel_thr, best_method, df
+
+
+def analyse_methods(single_run_plotdir, method_list, folds_to_test, score='F1_Score', default_key='Default'):
+    all_results_dict = {}
+    grouped_list = []
+    
+    for method in method_list:
+        entire_method_results = []
+        
+        for fold_idx in range(folds_to_test):
+            filepath = f"{single_run_plotdir}/{method}/LOPO_{method}_dict{fold_idx}.pkl"
+            with open(filepath, 'rb') as f:
+                entire_method_results.append(pickle.load(f))
+        
+        results_df, _ = pipeline_results(
+            entire_pipeline_results=entire_method_results,
+            method_name=method,
+            condition=1,
+            score=score
+        )
+        all_results_dict[method] = results_df
+    
+        grouped_method_df = apply_base_operations(results_df, method_name=method, score=score)
+        grouped_list.append(grouped_method_df)
+    
+    grouped_df = pd.concat(grouped_list)
+    
+    plot_total_boxplots(all_results_dict, score=score, default_key = default_key)
+    best_sel_thr, best_method, final_stats_df = find_best_method_thr(grouped_df, score=score)
+    return best_sel_thr, best_method, final_stats_df
+
+    
 # =============================
 
 

@@ -23,11 +23,6 @@ def clear_RAM():
         pass
 
 
-def save_all_results_singularly(single_run_plotdir, saving_list, name_list, LOPOCV_fold_idx = ''):
-    for element, name in zip(saving_list, name_list):
-        with open(f'{single_run_plotdir}/{name}{LOPOCV_fold_idx}.pkl', 'wb') as f:
-            pickle.dump(element, f)
-
 
 
 class TimeCalculator():
@@ -108,3 +103,38 @@ def extract_data_from_fold(val_pat, multiple_donations, ALL_DATASETS):
     return comprehensive_val_df, true_cells_labels
 
 
+# =================================
+
+def save_all_results_singularly(single_run_plotdir, saving_list, name_list, LOPOCV_fold_idx = ''):
+    for element, name in zip(saving_list, name_list):
+        with open(f'{single_run_plotdir}/{name}{LOPOCV_fold_idx}.pkl', 'wb') as f:
+            pickle.dump(element, f)
+
+
+def reload_from_temp(filter_sel_thr_list, method, fold_idx, mem):
+
+    lopo_dict = {}
+    for FILTER_SEL_THRESHOLD in filter_sel_thr_list:
+        name_var = temp_key(method = method, thr = FILTER_SEL_THRESHOLD, fold_idx = fold_idx)
+        
+        try:
+            (LOPOCV_results,) = mem.load_variables([name_var])
+            lopo_dict[FILTER_SEL_THRESHOLD] = LOPOCV_results
+            print('Variable loaded')
+
+        except:
+            print('Variable not loaded')
+            pass
+
+    return lopo_dict
+
+def temp_key(method, thr, fold_idx):
+    return f'LOPOCV_{method}_results_{thr}_fold{fold_idx}'
+    
+def remove_temp(filter_sel_thr_list, method, fold_idx, mem):
+    for FILTER_SEL_THRESHOLD in filter_sel_thr_list:
+        name_var = temp_key(method = method, thr = FILTER_SEL_THRESHOLD, fold_idx = fold_idx)
+        try:
+            mem.remove_var(name_var)
+        except:
+            pass

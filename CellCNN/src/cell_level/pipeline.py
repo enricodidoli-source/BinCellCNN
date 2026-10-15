@@ -1,10 +1,25 @@
+import os
 import gc
+import time
+import pickle
+import ctypes
 import numpy as np
+import matplotlib.pyplot as plt
+from IPython.display import display
+from pathlib import Path
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
+from memory_utils import clear_RAM, MemorySave
 
-from cell_level.cell_level_utils import clear_RAM, extract_data_from_fold
+from cell_level.cell_level_utils import (
+    extract_data_from_fold, 
+    reload_from_temp, temp_key, 
+    remove_temp, 
+    TimeCalculator,
+    save_all_results_singularly, 
+    load_training_models
+)
 
 
 from cell_level.networks_ops import (
@@ -21,7 +36,8 @@ from cell_level.filter_selection import (
 from cell_level.evaluation import (
     evaluate_single_filter, 
     get_best_thr, 
-    get_metrics_df
+    get_metrics_df,
+    add_classification_metrics
 )
 
 from sample_level.timepoints_elaboration import donation_extraction
@@ -268,18 +284,12 @@ def test_3_filt_phase(test_pat, multiple_donations, ALL_DATASETS, cross_val_mode
 
 
 
-def analyse_single_filters(all_filter_metadata_df, FILTER_SEL_THRESHOLD, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx):
+def analyse_single_filters(all_filter_metadata_df, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx):
     single_filters_test_results = []
     cols = ['filter_weights', 'scaler', 'best_thr', 'max_f1']
     all_df = all_filter_metadata_df[cols].explode(cols, ignore_index=True)
-    partial_up_df = all_df[all_df['max_f1'] > FILTER_SEL_THRESHOLD]
 
-    if len(partial_up_df) == 0:
-        max_f1 = all_df['max_f1'].max()
-        partial_up_df = all_df[all_df['max_f1'] == max_f1]
-
-    for i in range(len(partial_up_df)):
-        row = partial_up_df.iloc[i]
+    for index, row in all_df.iterrows(): # iterrows() is more efficient than for loop using range(len())
 
         temp_metadata_df = pd.DataFrame({
             'filter_weights': [row['filter_weights']],
@@ -411,3 +421,215 @@ def retrieve_flags(x, fold_loaded_models_lists):
     return all_probs_mean
 
 
+
+# ============================================
+
+
+
+def run_logistic_analysis(filter_metadata_df, train_kfolds, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx, max_cells = 2000000, random_state = 0, mem = None):
+
+    best_logistic_thr, max_logistic_f1, clf_list = best_cells_threshold_phase(filter_metadata_df, train_kfolds,
+                                                                                  multiple_donations, ALL_DATASETS,
+                                                                                  method='logistic',  max_cells = max_cells,
+                                                                                  random_state = random_state, mem = mem)
+
+    try: # reload ALL_DATASETS becuase it has been deleted during best_cells_threshold_phase
+        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
+    except:
+        print('Variable not loaded')
+        pass
+
+    LOPOCV_logistic_results = test_phase(filter_metadata_df, test_pat, multiple_donations, ALL_DATASETS,
+                  max_logistic_f1, best_logistic_thr, LOPOCV_fold_idx, clf_list = clf_list)
+
+    clear_RAM()
+    return LOPOCV_logistic_results
+
+
+def run_mean_analysis(filter_metadata_df, train_kfolds, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx, mem = None):
+
+    best_avg_thr, max_f1 = best_cells_threshold_phase(
+                                filter_metadata_df, train_kfolds,
+                                multiple_donations, ALL_DATASETS, mem = mem)
+
+    try:
+        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
+    except:
+        print('Variable not loaded')
+        pass
+
+    LOPOCV_results = test_phase(filter_metadata_df, test_pat, multiple_donations, ALL_DATASETS,
+                                    max_f1, best_avg_thr, LOPOCV_fold_idx)
+    clear_RAM()
+    return LOPOCV_results
+
+
+def run_top3_filters_analysis(cross_val_models_list, train_kfolds, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx, mem = None):
+
+    best_3_filt_thr, max_3_filt_f1 = best_3_filt_threshold_phase(cross_val_models_list, train_kfolds,
+                                                                 multiple_donations, ALL_DATASETS)
+    try:
+        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
+    except:
+        print('Variable not loaded')
+        pass
+
+    LOPOCV_3_filt_results = test_3_filt_phase(test_pat, multiple_donations, ALL_DATASETS,
+                                              cross_val_models_list, max_3_filt_f1, best_3_filt_thr, LOPOCV_fold_idx)
+    clear_RAM()
+    return LOPOCV_3_filt_results
+
+
+
+def fold_iteration(cellcnn_path, single_run_plotdir, LOPOCV_patients_folds, LOPOCV_fold_idx, exp, filter_sel_thr_list, multiple_donations, ALL_DATASETS, DIST_THRESHOLD, random_state = 0, max_cells = 2000000, mem = None,
+                   method = 'mean', DEFAULT_KEY = 'Default'):
+    clear_RAM()
+
+    SINGLE_RUN_METHODS = ('single', 'top3')
+    VALID_METHODS = SINGLE_RUN_METHODS +  ('mean', 'logistic')
+    if method not in VALID_METHODS:
+        raise ValueError(f"Unknown method: {method}. Available methods: {VALID_METHODS}")
+
+
+    print(f'\n======= Analysing LOPOCV fold {LOPOCV_fold_idx} =======\n')
+
+    model_cvfolds_dir = f'{cellcnn_path}/experiments/experiment_{exp}/outer_fold_{LOPOCV_fold_idx}/ensemble/training/'
+
+    cross_val_models_list = load_training_models(model_cvfolds_dir)
+    train_kfolds, test_pat = LOPOCV_patients_folds[LOPOCV_fold_idx] # for each LOPO fold
+
+    metadata_dir = os.path.join(single_run_plotdir, 'filters_metadata')
+    os.makedirs(metadata_dir, exist_ok = True)
+
+    metadata_list_in_dir = os.listdir(metadata_dir)
+    print(metadata_list_in_dir)
+
+    if method != 'top3':
+        if f'all_filters_metadata{LOPOCV_fold_idx}.pkl' not in metadata_list_in_dir:
+
+            filter_tim = TimeCalculator() # Reset Timer
+            filter_tim.add_time('start_filters_extraction_time')
+
+            _, all_filter_metadata_df = filters_selection_phase(cross_val_models_list, train_kfolds, multiple_donations,
+                                                                                ALL_DATASETS, LOPOCV_fold_idx, DIST_THRESHOLD, FILTER_SEL_THRESHOLD = 0)
+            filter_tim.add_time(f'end_filters_extraction_time')
+
+            save_all_results_singularly(metadata_dir,
+                                            saving_list = [all_filter_metadata_df],
+                                            name_list = ['all_filters_metadata'],
+                                            LOPOCV_fold_idx = LOPOCV_fold_idx)
+
+            # save time required to select filters
+            filters_time = filter_tim.return_time()
+
+            metadata_time_dir = os.path.join(single_run_plotdir, 'time_results', 'filters_extraction')
+            os.makedirs(metadata_time_dir, exist_ok = True)
+
+            save_all_results_singularly(metadata_time_dir,
+                                            saving_list = [filters_time],
+                                            name_list = ['filters_time'],
+                                            LOPOCV_fold_idx = LOPOCV_fold_idx)
+            clear_RAM(['all_filter_metadata_df', 'filters_time'])
+
+
+        tim = TimeCalculator() # Reset Timer
+
+        if method == 'single':
+            tim.add_time(f'start_{method}_time')
+
+            with open(f'{metadata_dir}/all_filters_metadata{LOPOCV_fold_idx}.pkl', 'rb') as f:
+                all_filter_metadata_df = pickle.load(f)
+
+            print(f'\n======= Analyse all filters singularly =======\n')
+            LOPOCV_analysis = analyse_single_filters(all_filter_metadata_df, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx)
+
+            clear_RAM(['all_filter_metadata_df'])
+        else:
+
+            for FILTER_SEL_THRESHOLD in filter_sel_thr_list:
+                tim.add_time(f'start_filter_selection_{FILTER_SEL_THRESHOLD}_time')
+
+                print(f'Analysis using Filter Selection Thr = {FILTER_SEL_THRESHOLD}')
+
+                with open(f'{metadata_dir}/all_filters_metadata{LOPOCV_fold_idx}.pkl', 'rb') as f:
+                    all_filter_metadata_df = pickle.load(f)
+
+                filter_metadata_df = filters_selection_phase(cross_val_models_list, train_kfolds, multiple_donations,
+                                                                                    ALL_DATASETS, LOPOCV_fold_idx, DIST_THRESHOLD, FILTER_SEL_THRESHOLD, all_filter_metadata_df)
+                clear_RAM(['all_filter_metadata_df'])
+
+                tim.add_time(f'end_filter_selection_{FILTER_SEL_THRESHOLD}_time')
+
+                tim.add_time(f'start_{FILTER_SEL_THRESHOLD}_{method}_time')
+
+                if method == 'logistic':
+
+                    print(f'\n======= BEST FILTERS: LOGISTIC REGRESSION using filter {FILTER_SEL_THRESHOLD} =======\n')
+                    LOPOCV_analysis = run_logistic_analysis(filter_metadata_df, train_kfolds, test_pat, multiple_donations, ALL_DATASETS,
+                                                                LOPOCV_fold_idx, max_cells = max_cells, random_state = random_state, mem = mem)
+                elif method == 'mean':
+
+                    print(f'\n======= BEST FILTERS: MEAN =======\n')
+                    LOPOCV_analysis = run_mean_analysis(filter_metadata_df, train_kfolds, test_pat, multiple_donations,
+                                                      ALL_DATASETS, LOPOCV_fold_idx, mem = mem)
+
+                tim.add_time(f'end_{FILTER_SEL_THRESHOLD}_{method}_time')
+                name_var = temp_key(method = method, thr = FILTER_SEL_THRESHOLD, fold_idx = LOPOCV_fold_idx)
+                
+                mem.save_and_clear([LOPOCV_analysis], [name_var], clear=True,  force = True)
+
+                clear_RAM(['filter_metadata_df'])
+
+                print('')
+                print('')
+                print('')
+                print('')
+                print(f'%%%%%% End filter {FILTER_SEL_THRESHOLD} %%%%%')
+                print('')
+                print('')
+                print('')
+                print('')
+
+            LOPO_dict = reload_from_temp(filter_sel_thr_list, method = method, fold_idx = LOPOCV_fold_idx, mem = mem)
+
+    elif method == 'top3':
+        tim = TimeCalculator() # Reset Timer
+        tim.add_time(f'start_{method}_time')
+
+        print(f'\n======= BEST 3 MODELS =======\n')
+        LOPOCV_analysis = run_top3_filters_analysis(cross_val_models_list, train_kfolds, test_pat, multiple_donations, ALL_DATASETS, LOPOCV_fold_idx, mem = mem)
+
+    if method == 'top3' or method == 'single':
+        LOPO_dict = {}
+        LOPO_dict[DEFAULT_KEY] = LOPOCV_analysis
+        clear_RAM([f'LOPOCV_analysis'])
+
+        tim.add_time(f'end_{method}_time')
+
+    # === Store results === #
+    method_dir = os.path.join(single_run_plotdir, method)
+    os.makedirs(method_dir, exist_ok = True)
+
+    save_all_results_singularly(method_dir,
+                                saving_list = [LOPO_dict],
+                                name_list = [f'LOPO_{method}_dict'],
+                                LOPOCV_fold_idx = LOPOCV_fold_idx)
+    clear_RAM([f'LOPO_dict'])
+
+    #tim.add_time('end_time')
+    time_results = tim.return_time()
+
+    time_results_dir = os.path.join(single_run_plotdir, 'time_results', method)
+    os.makedirs(time_results_dir, exist_ok = True)
+
+    save_all_results_singularly(time_results_dir,
+                                saving_list = [time_results],
+                                name_list = ['time_results'],
+                                LOPOCV_fold_idx = LOPOCV_fold_idx)
+
+    print(f'\n======= {LOPOCV_fold_idx} fold ended =======\n')
+
+    remove_temp(filter_sel_thr_list, method, fold_idx = LOPOCV_fold_idx, mem = mem)
+
+
+    clear_RAM(clear_all = True)
