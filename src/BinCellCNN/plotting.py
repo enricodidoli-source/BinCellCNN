@@ -1,6 +1,6 @@
 """ Copyright 2016-2017 ETH Zurich, Eirini Arvaniti and Manfred Claassen.
 
-This module contains functions for plotting the results of a CellCnn analysis.
+This module contains functions for plotting the results of a BinCellCnn analysis.
 
 """
 #scaler
@@ -20,7 +20,7 @@ import matplotlib.cm as cm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
-from utils import mkdir_p
+#from utils import mkdir_p
 import statsmodels.api as sm
 
 logger = logging.getLogger(__name__)
@@ -133,8 +133,8 @@ def plot_results(results, samples, phenotypes, labels, outdir,
         - tsne_selected_cells_filter_i.png :
             Marker distribution of selected cell population overlaid on t-SNE map.
     """
-    # create the output directory
-    mkdir_p(outdir)
+   # create the output directory
+
     if plot_test:
         phenotypes = [phenotypes[0]]
         samples = [samples[0]]
@@ -155,10 +155,13 @@ def plot_results(results, samples, phenotypes, labels, outdir,
     else:
         sys.exit('Consensus filters were not found.')
 
+
     # ======================================================================== #
+    '''
     if show_filters:
         print('Showing Filters') 
         plot_filters(results, labels, outdir)
+    '''
     # get discriminative filter indices in consensus matrix
     keep_idx = discriminative_filters(results, outdir, filter_diff_thres,
                                       show_filters=show_filters)
@@ -181,10 +184,12 @@ def plot_results(results, samples, phenotypes, labels, outdir,
     z = np.hstack(per_cell_ids)
 
     # ======================================================================== #
+
     # Normalizaition + tSNE visualization
     if plot_test:
-        lables_column = samples_for_true_cells[0].pop('IsBlast') 
+        #lables_column = samples_for_true_cells[0].pop('IsBlast') 
         true_cells_no_labels = samples_for_true_cells[0]
+
     if results['scaler'] is not None:
         print(f'scaler present')
         x = results['scaler'].transform(x)
@@ -195,7 +200,7 @@ def plot_results(results, samples, phenotypes, labels, outdir,
             true_cells['IsBlast'] = labels_column
 
     
-    logger.info("Computing t-SNE projection...")
+    #logger.info("Computing t-SNE projection...")
     print("Computing t-SNE projection...")
 
     tsne_idx = np.random.choice(x.shape[0], tsne_ncell) # samples the chosen number of id's(tsne_cells) from the first dataset of cells
@@ -237,11 +242,12 @@ def plot_results(results, samples, phenotypes, labels, outdir,
                        alpha=0.5, 
                        edgecolors='face')  
             
+            plt.show()
             fig_path = os.path.join(outdir, '12.0.True_cells_tsne')
         
             # Salva la figura
-            plt.savefig(fig_path, format='pdf', bbox_inches='tight')
-            print(f"Salvato in: {fig_path}")
+            #plt.savefig(fig_path, format='pdf', bbox_inches='tight')
+            #print(f"Salvato in: {fig_path}")
         
         print('tsne by filter started')
         
@@ -267,7 +273,7 @@ def plot_results(results, samples, phenotypes, labels, outdir,
         gx = np.linspace(np.min(g), np.max(g))
         gy = ecdf(gx)
 
-        plt.figure()
+        fig = plt.figure()
         sns.set_style('whitegrid')
         a = plt.step(gx, gy)
         t = filter_response_thres # threshold
@@ -282,9 +288,12 @@ def plot_results(results, samples, phenotypes, labels, outdir,
         plt.xlabel('Cell filter response')
         plt.ylabel('Cumulative distribution function (CDF)')
         sns.despine()
-        plt.savefig(os.path.join(outdir, '1.cdf_filter_%d.pdf' % i_filter), format='pdf')
-        plt.clf()
-        plt.close()
+        display(fig) # 2. USA DISPLAY INVECE DI PLT.SHOW()
+        plt.close(fig)
+        
+        #plt.savefig(os.path.join(outdir, '1.cdf_filter_%d.pdf' % i_filter), format='pdf')
+        #plt.clf()
+        #plt.close()
 
         
         condition = g > t # condition for extract data from the next arrays
@@ -322,21 +331,21 @@ def plot_results(results, samples, phenotypes, labels, outdir,
         print(f'plot_selected_subset started')
         
         suffix = 'filter_%d' % i_filter
-        plot_selected_subset(x1, z1, x, labels, sample_sizes, phenotypes,
-                             outdir, suffix, stat_test, log_yscale,
-                             group_a, group_b, group_names, regression)
+        #plot_selected_subset(x1, z1, x, labels, sample_sizes, phenotypes,
+        #                     outdir, suffix, stat_test, log_yscale,
+        #                     group_a, group_b, group_names, regression)
     logger.info("Done.")
     return return_filters
-
 
 def discriminative_filters(results, outdir, filter_diff_thres, show_filters=True):
     """ Checks which filters are the most representative for the phenotypes"""
     
-    mkdir_p(outdir)
+
     keep_idx = np.arange(results['selected_filters'].shape[0]) # keeps all filters and then iterativeli remove those which are not relevant
 
     # select the discriminative filters based on the validation set
     if 'filter_diff' in results:
+        print(True)
         filter_diff = results['filter_diff']
         filter_diff[np.isnan(filter_diff)] = -1 # if filter is NaN, it is substituted with -1
 
@@ -352,19 +361,21 @@ def discriminative_filters(results, outdir, filter_diff_thres, show_filters=True
                 break
 
         if show_filters:
-            plt.figure()
+            fig = plt.figure()
             sns.set_style('whitegrid')
             plt.plot(np.arange(len(filter_diff)), filter_diff, '--')
             plt.xticks(np.arange(len(filter_diff)), ['filter %d' % i for i in sorted_idx],
                        rotation='vertical')
             plt.ylabel('average cell filter response difference between classes')
             sns.despine()
-            plt.savefig(os.path.join(outdir, '4.filter_response_differences.pdf'), format='pdf')
-            plt.clf()
-            plt.close()
+            #plt.savefig(os.path.join(outdir, '4.filter_response_differences'), format='pdf')
+            display(fig) # 2. USA DISPLAY INVECE DI PLT.SHOW()
+            plt.close(fig)
 
     # same code as before but using a different metric
     elif 'filter_tau' in results:
+        print(False)
+
         filter_diff = results['filter_tau']
         filter_diff[np.isnan(filter_diff)] = -1
 
@@ -377,23 +388,25 @@ def discriminative_filters(results, outdir, filter_diff_thres, show_filters=True
             else:
                 break
         if show_filters:
-            plt.figure()
+            fig = plt.figure()
             sns.set_style('whitegrid')
             plt.plot(np.arange(len(filter_diff)), filter_diff, '--')
             plt.xticks(np.arange(len(filter_diff)), ['filter %d' % i for i in sorted_idx],
                        rotation='vertical')
             plt.ylabel('Kendalls tau')
             sns.despine()
-            plt.savefig(os.path.join(outdir, '5.filter_response_differences.pdf'), format='pdf')
-            plt.clf()
-            plt.close()
+            #plt.savefig(os.path.join(outdir, '5.filter_response_differences.pdf'), format='pdf')
+            display(fig) # 2. USA DISPLAY INVECE DI PLT.SHOW()
+            plt.close(fig)
+
 
     return list(keep_idx) # list of filter indexes to keep
 
 
+
 def plot_filters(results, labels, outdir):
     """Shows the most acrivated cells by the convolutional filters"""
-    mkdir_p(outdir)
+
     nmark = len(labels)
     
     # plot the filter weights of the best network
@@ -416,6 +429,7 @@ def plot_filters(results, labels, outdir):
 
     # plot the selected filters
     if results['selected_filters'] is not None: 
+        print('selected_filters is not NONE')
         w = results['selected_filters'][:, idx_except_bias] 
         
         fig_path = os.path.join(outdir, '8.consensus_filter_weights.pdf')
@@ -428,28 +442,31 @@ def plot_filters(results, labels, outdir):
 def plot_nn_weights(w, x_labels, fig_path, row_linkage=None, y_labels=None, fig_size=(10, 3)):
     if y_labels is None:
         y_labels = np.arange(0, w.shape[0])
+    print(w.shape[0])
 
     if w.shape[0] > 1: #if there are more than one filter
-        plt.figure(figsize=fig_size)
+        print(True)
 
         # shows the heatmap of the filters, clustered by cosine similarity
         clmap = sns.clustermap(pd.DataFrame(w, columns=x_labels),
                                method='average', metric='cosine', row_linkage=row_linkage,
-                               col_cluster=False, robust=True, yticklabels=y_labels, cmap="RdBu_r")
+                               col_cluster=False, robust=True, yticklabels=y_labels, cmap="RdBu_r",figsize=fig_size)
 
         
         plt.setp(clmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
         plt.setp(clmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
         clmap.cax.set_visible(True)
+
+        display(clmap.fig)
         
     else:  #otherwise no clustering is needed and  just shows aan heatmap
         plt.figure(figsize=(10, 1.5))
         sns.heatmap(pd.DataFrame(w, columns=x_labels), robust=True, yticklabels=y_labels)
-        plt.tight_layout()
-    plt.savefig(fig_path)
-    plt.clf()
-    plt.close()
 
+        plt.tight_layout()
+        plt.show()
+    
+    plt.close('all')
 
 def plot_marker_distribution(datalist, namelist, labels, grid_size, fig_path=None, letter_size=16,
                              figsize=(9, 9), ks_list=None, colors=None, hist=False, max_cells=10000):
@@ -765,10 +782,11 @@ def plot_tsne_grid(z, x, fig_path, labels=None, fig_size=(9, 9), g_j=4,
             grid[seq_index].set_visible(False)
     
     plt.tight_layout()
-    plt.savefig('.'.join([fig_path, suffix]), format=suffix, bbox_inches='tight', dpi=150)
-    plt.clf()
-    plt.close()
-
+    
+    #plt.savefig('.'.join([fig_path, suffix]), format=suffix, bbox_inches='tight', dpi=150)
+    #plt.clf()
+    #plt.close()
+    plt.show()
 
 def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
                              labels=None, fig_size=(9, 9), g_j=4, s=.5, suffix='png'):
@@ -815,10 +833,10 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
         ax.grid(False)
 
     fig_path += '_aerg'
-    plt.savefig('.'.join([fig_path, suffix]), format=suffix)
-    plt.clf()
-    plt.close()
-    
+    #plt.savefig('.'.join([fig_path, suffix]), format=suffix)
+    #plt.clf()
+    #plt.close()
+    plt.show() 
 '''
 
 def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
@@ -919,7 +937,7 @@ def plot_tsne_selection_grid(z_pos, x_pos, z_neg, vmin, vmax, fig_path,
 '''
 def plot_2D_map(z, feat, fig_path, s=2, plot_contours=False):
     sns.set_style('white')
-    _fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(5, 5))
     if plot_contours:
         sns.kdeplot(z[:, 0], z[:, 1], colors='lightgray', cmap=None, linewidths=0.5)
 
@@ -942,9 +960,10 @@ def plot_2D_map(z, feat, fig_path, s=2, plot_contours=False):
         plt.legend(loc="upper left", markerscale=5., scatterpoints=1, fontsize=10)
     plt.xlabel('tSNE dimension 1', fontsize=20)
     plt.ylabel('tSNE dimension 2', fontsize=20)
-    plt.savefig(fig_path, format=fig_path.split('.')[-1])
-    plt.clf()
-    plt.close()
+    #plt.savefig(fig_path, format=fig_path.split('.')[-1])
+    #plt.clf()
+    display(fig)
+    plt.close('all')
 
 
 def plot_tsne_per_sample(z_list, data_labels, fig_dir, fig_size=(9, 9),

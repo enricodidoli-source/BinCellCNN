@@ -14,11 +14,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 import random
 
-from cellcnn_utils import combine_samples, normalize_outliers_to_control
-from cellcnn_utils import cluster_profiles, keras_param_vector
-from cellcnn_utils import generate_subsets, generate_biased_subsets
-from cellcnn_utils import get_filters_classification, get_filters_regression
-from cellcnn_utils import mkdir_p
+from src.BinCellCNN.bincellcnn_utils import combine_samples, normalize_outliers_to_control
+from src.BinCellCNN.bincellcnn_utils import cluster_profiles, keras_param_vector
+from src.BinCellCNN.bincellcnn_utils import generate_subsets, generate_biased_subsets
+from src.BinCellCNN.bincellcnn_utils import get_filters_classification, get_filters_regression
+from src.BinCellCNN.bincellcnn_utils import mkdir_p
 
 
 import tensorflow as tf
@@ -26,11 +26,13 @@ from tensorflow import keras
 from tensorflow.keras import layers, initializers, regularizers, optimizers, callbacks
 from tensorflow.keras import backend as K
 
+from memory_utils import clear_RAM
+
 logger = logging.getLogger(__name__)
 
 
-class CellCnn(object):
-    """ Creates a CellCnn model.
+class BinCellCNN(object):
+    """ Creates a BinCellCnn model.
 
     Args:
         - ncell :
@@ -80,7 +82,7 @@ class CellCnn(object):
             models pass the accuracy threshold, keep filters from the best 3 models.
     """
 
-    def __init__(self, ncell=200, nsubset=1000, per_sample=False,
+    def __init__(self, ncell=200, nsubset=1000, bs = 200, per_sample=False,
                  maxpool_percentages=None, scale=True,
                  nfilter_choice=None, dropout='auto', dropout_p=.5,
                  coeff_l1=0, coeff_l2=0.0001, learning_rate=None, 
@@ -93,6 +95,7 @@ class CellCnn(object):
         self.nrun = nrun
         self.ncell = ncell
         self.nsubset = nsubset
+        self.bs = bs
         self.per_sample = per_sample
         self.maxpool_percentages = maxpool_percentages
         self.nfilter_choice = nfilter_choice
@@ -118,6 +121,7 @@ class CellCnn(object):
         self.all_params['scale'] = self.scale
         self.all_params['nsubset'] = self.nsubset
         self.all_params['ncell'] = self.ncell
+        self.all_params['bs'] = self.bs
         self.all_params['per_sample'] = self.per_sample
         self.all_params['maxpool_percentages'] = self.maxpool_percentages
         self.all_params['nfilter_choice'] = self.nfilter_choice
@@ -138,7 +142,7 @@ class CellCnn(object):
         
         
     def fit(self, train_samples, train_phenotypes, outdir, valid_samples=None,
-            valid_phenotypes=None, generate_valid_set=True):
+            valid_phenotypes=None, mem = None, metric = 'accuracy'):
 
         """ Trains a CellCnn model.
 
@@ -177,7 +181,7 @@ class CellCnn(object):
         res = train_model(train_samples, train_phenotypes, outdir,
                           valid_samples, valid_phenotypes,
                           scale=self.scale, 
-                          ncell=self.ncell, nsubset=self.nsubset, per_sample=self.per_sample,
+                          ncell=self.ncell, nsubset=self.nsubset, bs = self.bs, per_sample=self.per_sample,
                           maxpool_percentages=self.maxpool_percentages,
                           nfilter_choice=self.nfilter_choice,
                           learning_rate=self.learning_rate,
@@ -185,13 +189,14 @@ class CellCnn(object):
                           dropout=self.dropout, dropout_p=self.dropout_p,
                           max_epochs=self.max_epochs,
                           patience=self.patience, dendrogram_cutoff=self.dendrogram_cutoff,
-                          accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed, generate_valid_set = generate_valid_set, grid = self.grid, nrun = self.nrun)
+                          accur_thres=self.accur_thres, verbose=self.verbose, seed = self.seed,
+                           grid = self.grid, nrun = self.nrun, mem = mem, metric = metric)
         
         self.results = res
         self.all_params['results'] = self.results
         return self
 
-    def predict(self, new_samples, ncell_per_sample=None, seed = None):
+    def predict(self, test_samples, ncell_per_sample=None, seed = None, validation = False, mem = None):
 
         """ Makes predictions for new samples.
 
@@ -218,27 +223,30 @@ class CellCnn(object):
         print(f'seed: {seed}. Type: {type(seed)}')
         self.all_params['prediction_seed'] = seed
             
+        
         if ncell_per_sample is None:
-            ncell_per_sample = np.min([x.shape[0] for x in new_samples])
+        
+            ncell_per_sample = np.min([len(x) for x in test_samples])
         logger.info(f"Predictions based on multi-cell inputs containing {ncell_per_sample} cells.")
 
         # z-transform the new samples if we did that for the training samples
         scaler = self.results['scaler']
         if scaler is not None:
-            new_samples = [scaler.transform(x) for x in new_samples]
+            test_samples = [scaler.transform(x) for x in test_samples]
 
-        nmark = new_samples[0].shape[1]
+        print('samples length', [len(x) for x in test_samples])
+        nmark = test_samples[0].shape[1]
         n_classes = self.results['n_classes']
  
         # get the configuration of the top 3 models
-        accuracies = self.results['accuracies']
-        sorted_idx = np.argsort(accuracies)[::-1][:3]
+        scores = self.results['scores']
+        sorted_idx = np.argsort(scores)[::-1][:3]
         config = self.results['config']
 
         
-        y_pred = np.zeros((3, len(new_samples), n_classes))
+        y_pred = np.zeros((3, len(test_samples), n_classes))
         for i_enum, i in enumerate(sorted_idx):
-            keras.utils.set_random_seed(int(seed + i))
+
             
             nfilter = config['nfilter'][i]
             maxpool_percentage = config['maxpool_percentage'][i]
@@ -251,20 +259,22 @@ class CellCnn(object):
 
             # and load the learned filter and output weights
             weights = self.results['best_3_nets'][i_enum]
-            #print(f'weights: {weights}')
             
             model.set_weights(weights)
 
             # select a random subset of `ncell_per_sample` and make predictions
-            new_samples_subsets = []
-            for x in new_samples:
+            if len(test_samples) > 1:
+                keras.utils.set_random_seed(int(seed + i))
 
-                new_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
-                           for x in new_samples]
-            #print(f'new_samples: {new_samples_subsets}')
-            data_test = np.vstack(new_samples)
+            for x in test_samples:
+                test_samples = [shuffle(x)[:ncell_per_sample].reshape(1, ncell_per_sample, nmark)
+                           for x in test_samples]
+            print(f'test_samples_length: {len(test_samples)}')
+            data_test = np.vstack(test_samples)
+
             y_pred[i_enum] = model.predict(data_test)
-            
+        print('y_pred', y_pred)
+        print('np.mean(y_pred, axis=0)', np.mean(y_pred, axis=0))
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
 def data_transformation(dataset, labels = False):
@@ -304,32 +314,85 @@ def grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate):
                     param_grid.append(hyper_selection)
                     print(hyper_selection)
     return param_grid 
+
+def fit_scaler(dataset):
+    dataset_no_labels = dataset.copy()
+
+    # Remove the 'IsBlast' column to not be included in the transformation
+    z_scaler = StandardScaler(with_mean=True, with_std=True) 
+    z_scaler.fit(dataset_no_labels) #scale data
+
+    return z_scaler
+
+def scale_data(dataset, z_scaler):
+
+    dataset_no_labels = dataset.copy()
+    scaled_dataset = z_scaler.transform(dataset_no_labels)
+    dataset_after = scaled_dataset
+    return dataset_after
+
+
+
+
+def generate_train_val_identifier(train_samples, train_phenotypes, valid_samples, valid_phenotypes, eval_folds=5, seed=42, mem = None):
     
-def train_model(train_samples, train_phenotypes, outdir,
-                valid_samples=None, valid_phenotypes=None, generate_valid_set = False,
+    if mem is not None:
+        print('Loading from Temp')
+        (train_samples, train_phenotypes, 
+        valid_samples, valid_phenotypes) = load_train_valid_from_temp(train_samples=train_samples, 
+                                                                   train_phenotypes=train_phenotypes, 
+                                                                   valid_samples=valid_samples, 
+                                                                   valid_phenotypes=valid_phenotypes, 
+                                                                   mem=mem)
+
+    train_sample_ids = np.arange(len(train_phenotypes))
+    X_train, id_train = combine_samples(train_samples, train_sample_ids)
+ 
+    valid_sample_ids = np.arange(len(valid_phenotypes))
+    X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
+
+    # shuffling
+    X_train, id_train = shuffle(X_train, id_train, random_state=seed)
+    X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
+        
+    print('Identifier Done!')
+    return X_train, id_train, X_valid, id_valid, train_phenotypes, valid_phenotypes
+
+
+def load_train_valid_from_temp(train_samples=None, train_phenotypes=None, 
+                               valid_samples=None, valid_phenotypes=None, mem=None):
+
+    if mem is not None:
+        print('Loading from Temp')
+        (train_samples, train_phenotypes) = mem.load_variables(['train_samples', 'train_phenotypes'])
+
+        (valid_samples, valid_phenotypes) = mem.load_variables(['valid_samples', 'valid_phenotypes'])
+            
+    else:
+
+        # copy the list of samples so that they are not modified in place
+        train_samples = train_samples.copy()
+        valid_samples = valid_samples.copy()
+        
+    train_phenotypes = np.array(train_phenotypes)
+    valid_phenotypes = np.array(valid_phenotypes)
+    return train_samples, train_phenotypes, valid_samples, valid_phenotypes
+
+
+def train_model(train_samples = None, train_phenotypes = None, outdir = None,
+                valid_samples=None, valid_phenotypes=None,
                 scale=True,
-                ncell=200, nsubset=1000, per_sample=False,
+                ncell=200, nsubset=1000, bs = 200, per_sample=False,
                 maxpool_percentages=None, nfilter_choice=None,
                 learning_rate=None, coeff_l1=0, coeff_l2=1e-4, dropout='auto', dropout_p=.5,
                 max_epochs=20, patience=5,
-                dendrogram_cutoff=0.4, accur_thres=.95, verbose=1, seed = 42, grid = False, nrun = 3):
+                dendrogram_cutoff=0.4, accur_thres=.95, verbose=1, seed = 42, grid = False, nrun = 3, mem = None, metric = 'accuracy'):
     
 
     """ Performs a CellCnn analysis """
-    # Imposta i seed GLOBALI all'inizio
-    random.seed(seed)
-    np.random.seed(seed)
-    tf.random.set_seed(seed)  # ← IMPORTANTE per TensorFlow!
+    keras.utils.set_random_seed(seed)   # imposta random, numpy e tensorflow insieme
 
-    
-    if len(train_samples[0].iloc[0]) == 12: # 12 because cells analyzed have 11 markers + cell label
-        print(f'12 columns found. Labels detected. "labels" variable set to True')
-        print(f'To change number of markers (excluded labels column), go to model.py -> train_model()') 
-        labels = True
-    else:
-        print(f'No labels detected. "labels" variable set to False')
-        labels = False
-    
+
     if maxpool_percentages is None:
         maxpool_percentages = [0.01, 1., 5., 20., 100.]
     if nfilter_choice is None:
@@ -338,239 +401,181 @@ def train_model(train_samples, train_phenotypes, outdir,
         learning_rate = [10 ** np.random.uniform(-3, -2)] # random choice 
         
     mkdir_p(outdir)
+       
+    print('')
+    print('valid_phenotypes', valid_phenotypes)
+
+    # train/val generation and shuffling
+    X_train, id_train, X_valid, id_valid, train_phenotypes, valid_phenotypes = generate_train_val_identifier(
+        train_samples=train_samples,
+        train_phenotypes=train_phenotypes,
+        valid_samples=valid_samples, 
+        valid_phenotypes=valid_phenotypes,
+        eval_folds=5,
+        seed=seed,
+        mem = mem
+    )
     
 
-    # copy the list of samples so that they are not modified in place
-    train_samples = train_samples.copy()
-    if valid_samples is not None:
-        valid_samples = valid_samples.copy()
-    
-    # merge all input samples (X_train, X_valid)
-    # and generate an identifier for each of them (train_id, valid_id)
-    train_sample_ids = np.arange(len(train_phenotypes))
-    X_train, id_train = combine_samples(train_samples, train_sample_ids)
-
-    if valid_samples is not None:
-        valid_sample_ids = np.arange(len(valid_phenotypes))
-        X_valid, id_valid = combine_samples(valid_samples, valid_sample_ids)
-    elif (valid_samples is None) and generate_valid_set:
-        sample_ids = range(len(train_phenotypes))
-        X, sample_id = combine_samples(train_samples, sample_ids)
-        valid_phenotypes = train_phenotypes
-
-        # split into train-validation partitions
-        eval_folds = 5
-        #kf = StratifiedKFold(sample_id, eval_folds)
-        #train_indices, valid_indices = next(iter(kf))
-        kf = StratifiedKFold(n_splits=eval_folds)
-        train_indices, valid_indices = next(kf.split(X, sample_id))
-        X_train, id_train = X[train_indices], sample_id[train_indices]
-        X_valid, id_valid = X[valid_indices], sample_id[valid_indices]
-    
-    if scale:
-        X_train, z_scaler = data_transformation(X_train, labels = labels)
-    else:
-        z_scaler = None
-
-    X_train, id_train = shuffle(X_train, id_train,  random_state=seed)
+    if mem is not None:
+        clear_RAM(['valid_samples'])
+    clear_RAM(['train_samples'])
+  
     train_phenotypes = np.asarray(train_phenotypes)
-    
-    # an array containing the phenotype for each single cell
     y_train = train_phenotypes[id_train]
 
-    if valid_samples is not None or generate_valid_set:
-        
-        if scale:
-            X_valid, z_scaler = data_transformation(X_valid, labels = labels)
+    valid_phenotypes = np.asarray(valid_phenotypes)
+    y_valid = valid_phenotypes[id_valid]
 
-        X_valid, id_valid = shuffle(X_valid, id_valid, random_state=seed)
-        valid_phenotypes = np.asarray(valid_phenotypes)
-        y_valid = valid_phenotypes[id_valid]
+
+    # Scale data
+    z_scaler = fit_scaler(X_train)
+    X_train = scale_data(X_train, z_scaler)
+    X_valid = scale_data(X_valid, z_scaler)
+
 
     # number of measured markers
-    if labels:
-        nmark = X_train.shape[1] - 1
-    else:
-        nmark = X_train.shape[1]
+    nmark = X_train.shape[1]
+
     # generate multi-cell inputs
-    logger.info("Generating multi-cell inputs...")
+    print("Generating multi-cell inputs...")
 
+          
+    X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
+                                            nsubset, ncell, per_sample, seed=seed)
+    X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
+                                                nsubset, ncell, per_sample, seed=seed)
 
-        
-    if labels:
-            print(f'Start generating subsets elabortating samples WITH label column')
-            
-            X_tr, y_tr, S, y_train_resampled = generate_subsets(X_train, train_phenotypes, id_train,
-                                          nsubset, ncell, per_sample, seed=seed)
+    
+    clear_RAM(['X_valid', 'X_train'])
 
-            if (valid_samples is not None) or generate_valid_set:
-                X_v, y_v, S, y_valid_resampled = generate_subsets(X_valid, valid_phenotypes, id_valid,
-                                            nsubset, ncell, per_sample, seed = seed + nsubset + 100)
-    else:
-            print(f'Start generating subsets elabortating samples WITHOUT label column')
-            X_tr, y_tr = generate_subsets(X_train, train_phenotypes, id_train,
-                                          nsubset, ncell, per_sample, seed=seed, labels = False)
-
-            
-            if (valid_samples is not None) or generate_valid_set:
-                X_v, y_v = generate_subsets(X_valid, valid_phenotypes, id_valid,
-                                            nsubset, ncell, per_sample, seed=seed + nsubset + 100, labels = False)
-            print(f'Number of training subsets generated: {len(X_v[0])}')
-            print(f'Number of validation subsets generated: {len(X_tr[0])}')
-                
+    
+    print('Subsets Generation concluded!')
+    
     # neural network configuration
     # batch size
 
-    train_samples = []
-    #valid_samples = []
-    train_sample_ids = []
-    X_train = []
-    X_valid = []
-    
-    bs = 200
+    train_sample_ids = []    
+    #bs = 200
 
     # keras needs (nbatch, ncell, nmark)
     X_tr = np.swapaxes(X_tr, 2, 1)
-    if valid_samples is not None  or generate_valid_set:
-        X_v = np.swapaxes(X_v, 2, 1)
-    n_classes = 1
+    X_v = np.swapaxes(X_v, 2, 1)
 
     n_classes = len(np.unique(train_phenotypes))
     y_tr = keras.utils.to_categorical(y_tr, n_classes)
-    if valid_samples is not None  or generate_valid_set:
-            y_v = keras.utils.to_categorical(y_v, n_classes)
+    y_v = keras.utils.to_categorical(y_v, n_classes)
 
 
     if grid:
         # define all cobinations of parameters
         param_grid = grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate)               
-        print(f'Total number of selections: {len(param_grid)}')
-        
-        # train some neural networks with different parameter configurations
-        accuracies = np.zeros(len(param_grid))
         nrun = len(param_grid)
-        if nrun < 3:
-            logger.info(f"The nrun argument should be >= 3, setting it to 3.")
-            nrun = 3
-        
-    else:
-        # train some neural networks with different parameter configurations
-        if nrun < 3:
-            logger.info(f"The nrun argument should be >= 3, setting it to 3.")
-            nrun = 3
-        accuracies = np.zeros(nrun)
+        print(f'Total number of selections: {nrun}')
+
+    if nrun < 3:
+        logger.info(f"The nrun argument should be >= 3, setting it to 3.")
+        nrun = 3
+    scores = np.zeros(nrun)
 
 
     w_store = dict()
     config = dict()
-    config['nfilter'] = []
-    config['learning_rate'] = []
-    config['maxpool_percentage'] = []
 
-    
+
+    chosen_nfilter_list = []
+    chosen_mp_list = []
+    chosen_lr_list = []
+
     epochs_num = []
     histories = []
-    base_run_seed = seed + 10000
+
     for irun in range(nrun):
         
         print(f'\n# ============================================= #')
-        print(f'Run: {irun}\n')
+        if verbose:
+            logger.info(f"Training network: {irun + 1}")
         
-        # Usa seed diverso per ogni run, ma riproducibile
-        run_seed = base_run_seed + irun
-        print(f'Seed: {run_seed}')
-        np.random.seed(run_seed)
-        tf.random.set_seed(run_seed)
+        # reproducible but different seed per run
+
+        print(f'Seed: {seed}')
+
 
         # ============================================= #
         # hyperparameters selection
         # ============================================= #
-        if verbose:
-            logger.info(f"Training network: {irun + 1}")
 
         if grid:
             nfilter, mp, lr = param_grid[irun]
-            print(f'Adopted Parameters: {param_grid[irun]}')
         else:
             lr = np.random.choice(learning_rate)
             nfilter = np.random.choice(nfilter_choice)
-            mp = maxpool_percentages[irun % len(maxpool_percentages)]
+            mp = np.random.choice(maxpool_percentages)
             
-         #### Number of filters ####
-        config['nfilter'].append(nfilter)
-        logger.info(f"Number of filters: {nfilter}")
-    
-        #### Number of top k % cells in the pooling layer ###
-        config['maxpool_percentage'].append(mp)
-        k = max(1, int(mp / 100. * ncell))
-        logger.info(f"Cells pooled: {k}")
-    
-        #### Learning Rate ####     
-        config['learning_rate'].append(lr)
-        logger.info(f"Learning Rate: {lr}")
-            
+        chosen_nfilter_list.append(nfilter)
+        chosen_mp_list.append(mp)
+        chosen_lr_list.append(lr)
+
         print(f'\n Learning Rate: {lr}\n')
         print(f'\n Number of filters: {nfilter}\n')
         print(f'\n k% max pooling: {mp}\n')
-        
+
+        k = max(1, int(mp / 100. * ncell)) 
+
         # ============================================= #
         # build the neural network
         # ============================================= #
         model = build_model(ncell, nmark, nfilter,
                             coeff_l1, coeff_l2, k,
-                            dropout, dropout_p, n_classes, lr)
+                            dropout, dropout_p, n_classes, lr, metric = metric)
         
         #### weights saving ####
         filepath = os.path.join(outdir, f"nnet_run_{irun}.weights.h5")
-        try:
-            
-            if valid_samples is not None  or generate_valid_set:
-                    # callbacks automatically saves the weights if che metric val_loss is better than a certain level 
-                    # (save_best_only tells to the function to save only the est result)
-                    check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
+        #try:
+        for i in range(1):  
+            check = callbacks.ModelCheckpoint(filepath, monitor='val_loss', save_best_only=True,
                                       mode='auto', save_weights_only=True) 
                     
-                    # if the val_loss metrcis does not improve for 5 epochs, the training stops
-                    earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
+            earlyStopping = callbacks.EarlyStopping(monitor='val_loss', patience=patience, mode='auto')
                     
                     # keras.fit() trains the model
-                    history = model.fit(X_tr, y_tr,
+            history = model.fit(X_tr, y_tr,
                               epochs=max_epochs, batch_size=bs, callbacks=[check, earlyStopping],
                               validation_data=(X_v, y_v), verbose=verbose)
 
-                    actual_epochs = len(history.history['loss'])
-                    print(f"Performed epochs: {actual_epochs}")
 
-                    epochs_num.append(actual_epochs) # store number of epochs
-                    histories.append(history)
-            else:
-                    check = callbacks.ModelCheckpoint(filepath, monitor='loss', save_best_only=True,
-                                      mode='min', save_weights_only=True) 
-                    model.fit(X_tr, y_tr,
-                            epochs=max_epochs, batch_size=bs, callbacks=[check], verbose=verbose)
-                
-
-
+            epochs_num.append(len(history.epoch))
+            clear_RAM(['history'])
+            
             # load the model from the epoch with highest validation accuracy
             model.load_weights(filepath)
 
-            if valid_samples is not None  or generate_valid_set:
-                    valid_metric = model.evaluate(X_v, y_v, verbose=0)[-1] # test the model on the validation set
-                    logger.info(f"Best validation F1-score: {valid_metric[1]:.2f}")
-                    accuracies[irun] = valid_metric[1]
+            valid_metric = model.evaluate(X_v, y_v, verbose=0)[-1] # test the model on the validation set
+            
+            try:
+                valid_value = valid_metric[1] 
+            except (TypeError, IndexError):
+                valid_value = valid_metric
+
+            logger.info(f"Best validation F1-score: {valid_value:.2f}")
+            scores[irun] = valid_value
 
             # extract the network parameters
             w_store[irun] = model.get_weights()
 
-        #'''
+        '''
         except Exception as e:
             sys.stderr.write('An exception was raised during training the network.\n')
             sys.stderr.write(str(e) + '\n')
-        #'''
-        
+        '''
+
+    config['nfilter'] = chosen_nfilter_list
+    config['learning_rate'] = chosen_lr_list
+    config['maxpool_percentage'] = chosen_mp_list
+
     # the top 3 performing networks
-    model_sorted_idx = np.argsort(accuracies)[::-1][:3]
-    best_sorted_indices = np.argsort(accuracies)[::-1]
+    model_sorted_idx = np.argsort(scores)[::-1][:3]
+    best_sorted_indices = np.argsort(scores)[::-1]
     
     best_3_nets = [w_store[int(i)] for i in model_sorted_idx if int(i) in w_store]
     
@@ -588,14 +593,16 @@ def train_model(train_samples, train_phenotypes, outdir,
 
     # post-process the learned filters
     # cluster weights from all networks that achieved accuracy above the specified thershold
-    w_cons, cluster_res = cluster_profiles(w_store, nmark, accuracies, accur_thres,
+    w_cons, cluster_res = cluster_profiles(w_store, nmark, scores, accur_thres,
                                            dendrogram_cutoff=dendrogram_cutoff)
+
+
     results = {
         'scaler': z_scaler,
         'n_classes': n_classes,
         'model_sorted_idx': best_sorted_indices,
         'config': config,
-        'accuracies': accuracies,
+        'scores': scores,
         'best_3_nets': best_3_nets,
         'clustering_result': cluster_res,
         'selected_filters': w_cons,
@@ -603,33 +610,23 @@ def train_model(train_samples, train_phenotypes, outdir,
         'w_best_net': w_best_net,
         'best_model_index': best_accuracy_idx,
         'epochs_num': epochs_num,
-        'history': histories
+        'w_store': w_store
     }
     
-    if labels:
-        results['y_labels_resampled'] = y_train_resampled
 
-    if valid_samples is not None:
-      if (w_cons is not None):
-        maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
+    maxpool_percentage = config['maxpool_percentage'][best_accuracy_idx]
+        
+    if mem is not None:
+        (valid_samples,) = mem.load_variables(['valid_samples']) # bug if sample is generated from train sample because valid sample is not of the right format. TO fix later
 
-        if labels:
-                valid_no_labels = []
-                for df in valid_samples:
-                    valid_no_labels.append(df.drop(columns = ['IsBlast']).values)
-                valid_samples = valid_no_labels
+    filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
+                                                     valid_phenotypes, maxpool_percentage) 
+    results['filter_diff'] = filter_diff
 
-                
-        filter_diff = get_filters_classification(w_cons, z_scaler, valid_samples,
-                                                     valid_phenotypes, maxpool_percentage)
-        results['filter_diff'] = filter_diff
-
-    
     return results 
 
-
 def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
-                k, dropout, dropout_p, n_classes, lr=0.01, seed=42):
+                k, dropout, dropout_p, n_classes, lr=0.01, seed=42, metric = 'accuracy'):
     """ Builds the neural network architecture """
 
     # the input layer
@@ -665,10 +662,13 @@ def build_model(ncell, nmark, nfilter, coeff_l1, coeff_l2,
 
     model = keras.Model(inputs=data_input, outputs=output)
 
-    f1_score = keras.metrics.F1Score(average=None, threshold=None, name="f1_score", dtype=None)
+    #f1_score = keras.metrics.F1Score(average='macro', threshold=None, name="f1_score", dtype=None)
+
+
+    
     model.compile(optimizer=optimizers.Adam(learning_rate=lr),
                       loss='categorical_crossentropy',
-                      metrics = [f1_score])
+                      metrics = [metric])
 
     return model
 
