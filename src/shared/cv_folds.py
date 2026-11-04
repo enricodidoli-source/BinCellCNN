@@ -1,13 +1,110 @@
+
+
+
 ''' 
 from cv_folds import remove_test_patients_from_categories, classic_CV_train_val_splits
-from cv_folds import generate_LOPOCV_dicts, generate_LOPOCV_folds, extract_fold_features
+from cv_folds import generate_LOPOCV_dicts, generate_LOPOCV_folds
 ''' 
 
 from itertools import zip_longest
 import pandas as pd
 import numpy as np
 
-from sample_level.timepoints_elaboration import donor_division
+from memory_utils import clear_RAM
+
+from src.shared.timepoints_elaboration import donor_division
+
+
+
+
+# LOPOCV 
+
+def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None, mem = None, label_column = 'IsBlast'):
+    """
+    Generates Leave-One-Patient-Out Cross-Validation (LOPOCV) fold pairs.
+    For each patient, creates a (train_dict, test_dict) tuple where the patient is the test set.
+    Optionally computes blast percentages for the test patient's samples.
+
+    """
+    if mem:
+        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
+
+    full_LOPOCV_dicts = []
+    for patient in multiple_donations.keys():#
+        prov_multiple = multiple_donations.copy()
+        prov_multiple.pop(patient) # remove patient
+
+        test = {} #store patient
+        test[patient] = multiple_donations[patient]
+        if ALL_DATASETS is not None:
+            percs = []
+            for sample_idx in multiple_donations[patient]:
+                sample = ALL_DATASETS[sample_idx]
+                p = round(((sample[label_column] == 1).sum()/len(sample))*100, 5) # perc
+                percs.append(p)
+            print(prov_multiple.keys(), test.keys(), percs)
+
+        full_LOPOCV_dicts.append((prov_multiple, test)) # append folds
+
+    clear_RAM(['ALL_DATASETS'])
+    return full_LOPOCV_dicts
+
+
+
+
+def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, seed_manager = None, label_column = 'IsBlast'):
+    """
+    Builds the full LOPOCV structure: for each left-out patient, generates the inner
+    k-fold CV splits for hyperparameter tuning.
+
+    """
+
+    if mem:
+        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
+
+    LOPOCV_patients_folds = []
+    for i, (train_set_dict, external_val_set_dict) in enumerate(full_LOPOCV_dicts):
+
+        if seed_manager is None:
+            CV_seed = 42 + i
+        else:
+            CV_seed = seed_manager.get_seed(f'Patient_division_LOPOCV_{i}')
+
+        healthy_donors, blast_donors, mixed_donors = donor_division(train_set_dict, ALL_DATASETS, label_column = label_column)
+
+        left_out_patient = list(external_val_set_dict.keys())
+
+        # defined the External validation set, remove the patients from the categories
+        h_pat, b_pat, m_pat, tot_pat = remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors, left_out_patient)
+
+        # remove the Left Out patient and generate the folds for the 5 folds CV
+        k_folds = classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = 5, LOOCV_test = left_out_patient[0], shuffle_seed = CV_seed)
+
+        # k_folds is for the tuning. left_out_patient for the final training
+        LOPOCV_patients_folds.append((k_folds, left_out_patient))
+
+    clear_RAM(['ALL_DATASETS'])
+    return LOPOCV_patients_folds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors,  test_donors_idx):
     """
@@ -93,62 +190,10 @@ def classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = 3, LOOCV_t
     return tot_folds
 
 
-# LOPOCV 
-
-
-def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None):
-    """
-    Generates Leave-One-Patient-Out Cross-Validation (LOPOCV) fold pairs.
-    For each patient, creates a (train_dict, test_dict) tuple where the patient is the test set.
-    Optionally computes blast percentages for the test patient's samples.
-
-    """
-    
-    full_LOPOCV_dicts = []
-    for patient in multiple_donations.keys():#
-        prov_multiple = multiple_donations.copy()
-        prov_multiple.pop(patient) # remove patient
-
-        test = {} #store patient
-        test[patient] = multiple_donations[patient]
-        if ALL_DATASETS is not None:
-            percs = []
-            for sample_idx in multiple_donations[patient]:
-                sample = ALL_DATASETS[sample_idx]
-                p = round(((sample['IsBlast'] == 1).sum()/len(sample))*100, 5) # perc 
-                percs.append(p)
-            print(prov_multiple.keys(), test.keys(), percs)
-
-        full_LOPOCV_dicts.append((prov_multiple, test)) # append folds
-    return full_LOPOCV_dicts
 
 
 
-def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS, starting_seed):
-    """
-    Builds the full LOPOCV structure: for each left-out patient, generates the inner
-    k-fold CV splits for hyperparameter tuning.
-
-    """
-
-    LOPOCV_patients_folds = []
-    for i, (train_set_dict, external_val_set_dict) in enumerate(full_LOPOCV_dicts):
-        CV_seed = starting_seed + 10*i
-        healthy_donors, blast_donors, mixed_donors = donor_division(train_set_dict, ALL_DATASETS)
-
-        left_out_patient = list(external_val_set_dict.keys())
-
-        # defined the External validation set, remove the patients from the categories
-        h_pat, b_pat, m_pat, tot_pat = remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors, left_out_patient)
-
-        # remove the Left Out patient and generate the folds for the 5 folds CV
-        k_folds = classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = 5, LOOCV_test = left_out_patient[0], shuffle_seed = CV_seed)
-
-        # k_folds is for the tuning. left_out_patient for the final training
-        LOPOCV_patients_folds.append((k_folds, left_out_patient))
-    return LOPOCV_patients_folds
-
-
+'''
 
 def extract_fold_features(chosen_perm, multiple_donations, tot_perc_list):
     """
@@ -179,3 +224,4 @@ def extract_fold_features(chosen_perm, multiple_donations, tot_perc_list):
         # assignes train and validation features to the i-th fold combination
         fold_features[i] = [train_features, val_features]
     return fold_features
+'''    

@@ -1,26 +1,208 @@
-from sklearn.metrics import fbeta_score, f1_score, accuracy_score, recall_score, precision_score, auc
-from sklearn.metrics import matthews_corrcoef
-import numpy as np
-import pandas as pd
-import os
-import pickle as pkl
-
-from sample_level.classification import robust_prediction_labelling
-
-from sample_level.utils import flatten
-import json
-import random
-import seaborn as sns
-import matplotlib.pyplot as plt
-
 
 '''
+def generate_seeds(n=10, seed=None):
+    """
+    Generate n unique random seeds.
+    """
+    if seed is None:
+        print('Warning: random generation. No Reproducibility!')
+        print('Reproducibility -> add "seed:int()" parameter!')
+    else:
+        np.random.seed(seed)
+
+    if n > 10**6:
+        raise ValueError(f"Cannot generate {n} unique seeds from range [0, 10^6)")
+    return np.random.choice(10**6, n, replace=False)
+    
+
+
+
+def retrieve_labels(datasets_extracted, remove = False, flat = False):
+    """
+    Extracts binary labels from the 'IsBlast' column of each dataset.
+    Optionally removes the label column or flattens the output.
+    """
+    per_donor_original_datasets = []
+    per_donor_original_y = []
+
+    for donor in datasets_extracted:
+        donor_datasets = []
+        donor_ys = []
+        for dataset in donor:
+            if (dataset['IsBlast'] == 1).sum() > 0:
+                donor_ys.append(1)
+            else:
+                donor_ys.append(0)
+
+            if remove:
+                dataset = dataset.drop(columns = ['IsBlast'])
+
+            donor_datasets.append(dataset)
+
+        per_donor_original_datasets.append(donor_datasets)
+        per_donor_original_y.append(donor_ys)
+
+
+    if flat:
+        per_donor_original_datasets = flatten(per_donor_original_datasets)
+        per_donor_original_y = flatten(per_donor_original_y)
+
+    return per_donor_original_datasets, per_donor_original_y
+
+
+
+
+
+def prepare_results_to_save(results_list, par_list = ['config', 'model_sorted_idx']):
+    """
+    Filters a list of result dictionaries, keeping only the specified keys.
+    """
+    tot_trials_results = []
+
+    for res in results_list:
+        needed_results = {}
+        for key, value in res.items():
+            if key in par_list:
+                needed_results[key] = value
+
+        tot_trials_results.append(needed_results)
+    return tot_trials_results
+
+
+def subset_sampling(dataset, ncells, nsubsets, seed):
+    """
+    Generates multiple random subsets (with replacement) from a single dataset.
+    """
+    
+    resampled_datasets = []
+    resampled_y = []
+    blast_perc = []
+
+    for i in range(nsubsets):
+        seed += 10
+        #print(f'seed:{seed}')
+        resampled_cells = dataset.sample(ncells, replace = True, random_state = seed).reset_index(drop=True) # sample cells
+
+        if (resampled_cells['IsBlast'] == 1).sum() > 0: #check label
+            resampled_y.append(1)
+            blast_perc.append((resampled_cells['IsBlast'] == 1).sum() / len(resampled_cells))
+        else:
+            resampled_y.append(0)
+            blast_perc.append(0)
+        resampled_cells = resampled_cells.drop(columns = ['IsBlast']) #remove isblast column
+
+        resampled_datasets.append(resampled_cells)
+    return    resampled_datasets,  resampled_y , blast_perc, seed
+
+def sub_resampling_list(k, nsub_per_sub = 50):
+    """
+    Splits k into chunks of nsub_per_sub, returning the list of chunk sizes. 
+    Used to save memory
+    """
+    remaining_k = k
+    sub_division = []
+
+    while remaining_k > 0:
+        print(remaining_k)
+        if remaining_k >= nsub_per_sub:
+            sub_division.append(nsub_per_sub)
+            remaining_k -= nsub_per_sub
+            print(sub_division)
+        else:
+            sub_division.append(remaining_k)
+            return sub_division
+    return sub_division
+
+
+
+
+def retireve_sorted_pat_sample_ids(samples_info_dict):
+    """
+    Builds a sorted list of sample IDs in the format 'Pat_{id}_{timepoint}',
+    ordered by patient id and then by index within each patient.
+    """
+    pat_ids = samples_info_dict['patient_id'].to_list()
+    int_pat_ids = [int(i) for i in pat_ids]
+
+    pat_sample_ids = []
+    for i in range(1, np.max(int_pat_ids) + 1):
+
+        if str(i) in pat_ids:
+            df = samples_info_dict[samples_info_dict['patient_id'] == str(i)]
+            df = df.sort_index()
+            for s in range(df.shape[0]):
+                time_point = df.iloc[s]['time_point_days']
+                pat_sample_ids.append(f'Pat_{i}_{time_point}')
+
+    return pat_sample_ids
+
+def nsub_ncells_comb(ncells_step, max_ncells, blocks, nsub_step):
+    """
+    Generates all combinations of ncells and nsubsets values from their respective ranges.
+    """
+    ncells_list = list(range(ncells_step, max_ncells + ncells_step, ncells_step))
+    nsub_list = list(range(100, blocks*nsub_step + nsub_step, nsub_step))
+    
+    all_nsub_ncells_comb = []
+    for ncells_value in ncells_list:
+        for nsub_value in nsub_list:
+            all_nsub_ncells_comb.append([ncells_value, nsub_value])
+    return all_nsub_ncells_comb
+
+
+# save and load CellCNN models
+def save_models(model, save_dir):
+    """
+    Saves model parameters to a pickle file in the specified directory.
+    """
+    metadata_to_save = model.all_params
+    # Salva i metadati in un file pickle
+    with open(os.path.join(save_dir, 'metadata.pkl'), 'wb') as f:
+        pickle.dump(metadata_to_save, f)
+
+
+def load_models(CellCnn, meta):
+        """
+        Instantiates a CellCnn model and restores its parameters from a metadata dictionary.
+        """
+        model = CellCnn()
+
+        model.scale = meta['scale']
+        model.nsubset = meta['nsubset']
+        model.ncell = meta['ncell']
+        model.per_sample = meta['per_sample']
+        model.maxpool_percentages = meta['maxpool_percentages']
+        model.nfilter_choice = meta['nfilter_choice']
+        model.learning_rate = meta['learning_rate']
+        model.coeff_l1 = meta['coeff_l1']
+        model.coeff_l2 = meta['coeff_l2']
+        model.dropout = meta['dropout']
+        model.dropout_p = meta['dropout_p']
+        model.max_epochs = meta['max_epochs']
+        model.patience = meta['patience']
+        model.dendrogram_cutoff = meta['dendrogram_cutoff']
+        model.accur_thres = meta['accur_thres']
+        model.verbose = meta['verbose']
+        model.seed = meta['seed']
+        model.results = meta['results']
+        model.grid = meta['grid']
+
+        return model
+
+
+
+
+
+
+
+
+### FROM SHOW_RESULTS
 retrieve_samples_info, load_tuning_data, retrieve_all_LOPO_thresholds, retrieve_all_LOPO_ensemble_thresholds
 retrieve_all_LOPO_ensemble_metrics, retrieve_mean_std, rebuild_dataset_predictions
 generate_heatmap_dict, generate_dict_comb_3d, predict_trials,final_trials_prediction
 elaborate_data_for_box_violin, elaborate_ens_data_for_box_violin, from_orig_to_res_structure
 direct_prediction_across_seeds, scores_from_robust_labelling, cumulative_num_samples_sum, retrieve_blast_perc
-'''
+
 
 def retrieve_samples_info(data_folder_dir, multiple_donations, ALL_DATASETS):
     """
@@ -220,96 +402,7 @@ def rebuild_dataset_predictions(val_predicted_for_roc, best_idx):
     return predictions_list, new_val_y
 
 
-def elaborate_predictions(predictions_list, test_y, results = True, beta = 1, mcc = False):
-    """
-    Computes F1, recall, precision, accuracy and optionally MCC across multiple prediction trials.
-    If results=True, prints per-trial and mean metrics. Returns per-trial scores and a prediction DataFrame.
-    """
-    pred_phenotypes_dict = {}
 
-    f1_scores_list = []
-    recall_scores_list = []
-    precision_scores_list = []
-    accuracy_list = []
-    mcc_list = []
-
-    for i, pred in enumerate(predictions_list): # a prediction for every different seed
-
-        pred_phenotypes = phenotype_prediction(pred)
-
-        f1 = fbeta_score(test_y, pred_phenotypes, beta = beta, pos_label=1, zero_division = 0) # file-level
-        f1_scores_list.append(f1)
-
-        recall = recall_score(test_y, pred_phenotypes, pos_label=1, zero_division = 0) # file-level
-        recall_scores_list.append(recall)
-        
-        precision = precision_score(test_y, pred_phenotypes, pos_label=1, zero_division = 0) # file-level
-        precision_scores_list.append(precision)
-        
-        tot_correct = np.array(pred_phenotypes) ==  test_y #checks differencies in prediction
-        accuracy = np.sum(tot_correct)/ len(test_y)  #compute accuracy
-        accuracy_list.append(accuracy)
-    
-        if mcc:
-            mcc_score = matthews_corrcoef(test_y, pred_phenotypes)
-            mcc_list.append(mcc_score)
-
-        pred_phenotypes_dict[i] = pred_phenotypes
-        if results:
-            print(f'Trial {i} Accuracy: {accuracy}')
-            print(f'Trial {i} F1_score: {f1}')
-            print(f'Trial {i} Recall: {recall}')
-            print(f'Trial {i} Precision: {precision}')
-            if mcc:
-                print(f'Trial {i} MCC: {mcc_score}')
-
-    pred_phenotypes_dict['True Labels'] = test_y
-    
-    pred_phenotype_df = pd.DataFrame(pred_phenotypes_dict)
-
-    if results:
-        print(pred_phenotype_df.T)
-        mean_accuracy = np.mean(accuracy_list)
-        print(f'mean_accuracy over the ten trials: {mean_accuracy}')
-        accuracy_std = np.std(accuracy_list)
-        print(f'accuracy_std over the ten trials: {accuracy_std }')
-
-        mean_f1 = np.mean(f1_scores_list)
-        print(f'mean_f1 over the ten trials: {mean_f1}')
-        std_f1 = np.std(f1_scores_list)
-        print(f'std_f1 over the ten trials: {std_f1}')
-
-        mean_recall = np.mean(recall_scores_list)
-        print(f'mean_recall over the ten trials: {mean_recall}')
-        std_recall = np.std(recall_scores_list)
-        print(f'std_recall over the ten trials: {std_recall}')       
-        
-        mean_precision = np.mean(precision_scores_list)
-        print(f'mean_precision over the ten trials: {mean_precision}')
-        std_precision = np.std(precision_scores_list)
-        print(f'std_precision over the ten trials: {std_precision}')
-    
-        if mcc:
-            mean_mcc = np.mean(mcc_list)
-            print(f'mean_mcc over the ten trials: {mean_mcc}')
-            std_mcc = np.std(mcc_list)
-            print(f'std_mcc over the ten trials: {std_mcc}')
-    if mcc:
-        return pred_phenotype_df.T, accuracy_list , f1_scores_list, recall_scores_list, precision_scores_list, mcc_list
-    
-    return pred_phenotype_df.T, accuracy_list , f1_scores_list, recall_scores_list, precision_scores_list
-
-def phenotype_prediction(test_pred):
-    """
-    Converts raw prediction probabilities into binary labels using a fixed 0.5 threshold on the first class.
-    """
-    pred_phenotypes = []
-    for sample_pred in test_pred:
-        if sample_pred[0] < 0.5: # if  the first class < 0.5 => second class > 0.5
-            pred_phenotypes.append(1)
-        else:
-            pred_phenotypes.append(0)
-    return pred_phenotypes
 
 "==============================================================================="
 
@@ -1425,4 +1518,7 @@ def elaborate_metrics(imported_predictions, imported_test_y, results = False, pr
 
 
 
+
+
+'''
 

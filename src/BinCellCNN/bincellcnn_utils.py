@@ -10,8 +10,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import copy
-from downsample import random_subsample, kmeans_subsample, outlier_subsample
-from downsample import weighted_subsample
+from src.BinCellCNN.downsample import random_subsample, kmeans_subsample, outlier_subsample
+from src.BinCellCNN.downsample import weighted_subsample
 import sklearn.utils as sku
 from sklearn.metrics.pairwise import pairwise_kernels
 from scipy.cluster.hierarchy import linkage
@@ -136,8 +136,8 @@ def cluster_profiles(param_dict, nmark, accuracies, accur_thres=.99,
     accum = []
     # if not at least 3 models reach the accuracy threshold, select the filters from the 3 best
     if np.sort(accuracies)[-3] < accur_thres:
-        accur_thres = np.sort(accuracies)[-3]
 
+        accur_thres = np.sort(accuracies)[-3]
     # combine filters from multiple models
     for i, params in param_dict.items():
         if accuracies[i] >= accur_thres:
@@ -218,6 +218,50 @@ def per_sample_subsets(X, nsubsets, ncell_per_subset, k_init=False, seed = 42):
             Xres[i] = X_i.T
     return Xres
 
+'''
+def per_sample_subsets_fast(X, nsubsets, ncell_per_subset, seed=42):
+    np.random.seed(seed)
+    nobs, nmark = X.shape
+    print('X.shape', X.shape)
+    print(X)
+
+    print('ncell_per_subset', ncell_per_subset)
+    print('nobs', nobs)
+
+
+    # np.random.choice with size size=(nsubsets, ncell_per_subset) requires to
+    # have at least  nsubsets x ncell_per_subset because it generates nsubsets row
+    # of ncell_per_subset unique elements (if replace is False)
+    # Replace = True discards 36.8 % of cells so we fill one at time the indices matrix rows
+    # then we start again from the full collection of samples indices until the matrix is filled
+    
+    indices_list = []
+    generated_count = 0
+    
+    while generated_count < nsubsets:
+        
+        perm = np.random.permutation(nobs)
+        for start_idx in range(0, nobs, ncell_per_subset):
+            chunk = perm[start_idx : start_idx + ncell_per_subset]
+
+            if len(chunk) < ncell_per_subset: # if the final chunk does not contain enough indices, we random choice with replacement 
+        
+                to_sample = ncell_per_subset - len(chunk)
+                remaining_indices = np.random.choice(nobs, size=to_sample, replace=True)
+                chunk = np.concatenate([chunk, remaining_indices])
+                
+            indices_list.append(chunk)
+            generated_count += 1
+            
+            if generated_count >= nsubsets:
+                break
+
+    #indices = np.random.choice(nobs, size=(nsubsets, ncell_per_subset), replace=replace)
+    indices = np.array(indices_list)
+    print('indices', indices)
+    Xres = X[indices].transpose(0, 2, 1)
+    
+    return Xres
 
 def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
                      per_sample=False, k_init=False, seed = 42, labels = True):
@@ -226,36 +270,30 @@ def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
     n_out = len(np.unique(sample_id)) #
     
     for ylabel in range(n_out):
+
+        print('len(x)', len(X))
         X_i = filter_per_class(X, sample_id, ylabel)
+        print('len(X_i)', len(X_i))
 
-        S[ylabel] = per_sample_subsets(X_i, nsubsets, ncell, k_init, seed = seed)
-
-    # mix them
+        S[ylabel] = per_sample_subsets_fast(X_i, nsubsets, ncell, seed=seed)
+    
+    # MIX THEM  
     true_labels_list = []
     data_list, y_list = [], []
+    
     for y_i, x_i in S.items():
-        
         if labels:
-            new_x_i = []
-            true_labels = []
-            for element in x_i:
-                new_x_i.append(element[:-1])
-    
-                """log for true labels"""
-                counter = 0
-                for lab in element[-1]:
-                    if int(lab) == 1:
-                        counter += 1
-                
-                if counter > 0:
-                    true_labels.append(1)
-                else:
-                    true_labels.append(0)
-    
-            true_labels_list.append(np.array(true_labels))
-            data_list.append(new_x_i)
+            marker_labels = x_i[:, -1, :]  #  (nsubsets, ncell)
+            
+            true_labels = (marker_labels == 1).any(axis=1).astype(int)
+            new_x_i = x_i[:, :-1, :] 
+            new_x_i_list = [new_x_i[i] for i in range(new_x_i.shape[0])]
+            
+            true_labels_list.append(true_labels)
+            data_list.extend(new_x_i_list)
         else:
-            data_list.append(x_i)
+            x_i_list = [x_i[i] for i in range(x_i.shape[0])]
+            data_list.extend(x_i_list)
         
         y_list.append(pheno_map[y_i] * np.ones(x_i.shape[0], dtype=int))
     y_train_resampled = y_list.copy()
@@ -269,6 +307,73 @@ def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
         return Xt, yt, S, y_train_resampled
         
     return Xt, yt
+
+'''
+
+
+def per_sample_subsets_fast(X, nsubsets, ncell_per_subset, seed=42):
+    
+    np.random.seed(seed)
+    nobs, nmark = X.shape
+
+
+    # np.random.choice with size size=(nsubsets, ncell_per_subset) requires to
+    # have at least  nsubsets x ncell_per_subset because it generates nsubsets row
+    # of ncell_per_subset unique elements (if replace is False)
+    # Replace = True discards 36.8 % of cells so we fill one at time the indices matrix rows
+    # then we start again from the full collection of samples indices until the matrix is filled
+    #'''
+    indices_list = []
+    generated_count = 0
+    
+    while generated_count < nsubsets:
+        
+        perm = np.random.permutation(nobs)
+        for start_idx in range(0, nobs, ncell_per_subset):
+            chunk = perm[start_idx : start_idx + ncell_per_subset]
+
+            if len(chunk) < ncell_per_subset: # if the final chunk does not contain enough indices, we random choice with replacement 
+        
+                to_sample = ncell_per_subset - len(chunk)
+                remaining_indices = np.random.choice(nobs, size=to_sample, replace=True)
+                chunk = np.concatenate([chunk, remaining_indices])
+                
+            indices_list.append(chunk)
+            generated_count += 1
+            
+            if generated_count >= nsubsets:
+                break
+    indices = np.array(indices_list)
+    Xres = X[indices].transpose(0, 2, 1)
+    return Xres
+
+def generate_subsets(X, pheno_map, sample_id, nsubsets, ncell,
+                     per_sample=False, k_init=False, seed = 42):
+    
+    S = dict()
+    n_out = len(np.unique(sample_id)) #
+    
+    for ylabel in range(n_out): 
+        X_i = filter_per_class(X, sample_id, ylabel)
+        
+        S[ylabel] = per_sample_subsets_fast(X_i, nsubsets, ncell, seed=seed)
+
+    # mix them
+    true_labels_list = []
+    data_list, y_list = [], []
+    for y_i, x_i in S.items():
+
+        data_list.append(x_i)
+        y_list.append(pheno_map[y_i] * np.ones(x_i.shape[0], dtype=int))
+
+    y_train_resampled = y_list.copy()
+
+    Xt = np.vstack(data_list)
+    yt = np.hstack(y_list)
+    Xt, yt = sku.shuffle(Xt, yt,  random_state = seed)
+        
+    return Xt, yt
+
 
 def per_sample_biased_subsets(X, x_ctrl, nsubsets, ncell_final, to_keep, ratio_biased):
     nmark = X.shape[1]
@@ -323,6 +428,9 @@ def single_filter_output(filter_params, valid_samples, mp):
 
 
 def get_filters_classification(filters, scaler, valid_samples, valid_phenotypes, mp):
+    if filters is None or len(filters) == 0:
+        return np.empty(0)
+    
     y_true = np.array(valid_phenotypes)
     filter_diff = np.zeros(len(filters))
 
