@@ -1,49 +1,38 @@
 # Detecting Measurable Residual Disease in B-cell Acute Lymphoblastic Leukaemia using Convolutional Neural Networks
- 
----
 
 > ⚠️ **Project Status: Work in Progress (WIP) & Refactoring**
 > 
-> Welcome! This repository contains the code developed for my Master's Thesis, which is currently undergoing a major expansion.
+> Welcome! This repository contains the code developed for my Master's Thesis, which is currently undergoing a major expansion and refactoring phase. 
 > 
 > To keep the development organized, this repository is split into two main branches:
-> * **[`thesis-version` branch](https://github.com/enricodidoli-source/master-thesis/tree/thesis-version)**: Contains the exact, finalized code presented for my graduation.
-> * **`main` branch (Current)**: Contains the experimental work. Please note that the code and Jupyter notebooks here might be unstructured (e.g., containing testing cells, logs, and isolated functions) as I am actively experimenting and refactoring. A full code cleanup and standardization will follow this exploratory phase.
+> * **[`thesis-version` branch](https://github.com/enricodidoli-source/BinCellCNN/tree/thesis-version)**: Contains the exact, finalized code presented for my graduation.
+> * **`main` branch (Current)**: Contains the modularized and ongoing experimental work. 
 >
-> **[Click here to see all code differences between the Thesis version and the Current version](https://github.com/enricodidoli-source/master-thesis/compare/thesis-version...main)**.
----
-
-## What's New (Post-Thesis Updates)
-
-- **Single-Cell Modules**: Dedicated modules for single-cell classification analysis, available in [`CellCNN/modules/src/cell_level/`](./CellCNN/modules/src/cell_level/).
-- **Analysis Pipeline**: Added an end-to-end notebook for single-cell evaluation and filtering: [`refactoring_single_cell_detection.ipynb`](./CellCNN/notebooks/refactoring_single_cell_detection.ipynb).
-- **Method Selection**: Evaluated filter aggregation strategies (`single`, `mean`, `logistic`, `top3`) across thresholds with Leave-One-Patient-Out Cross-Validation (LOPOCV). 
-
-### Key Findings (Preview)
-- **Aggregated vs. Single Filter**: Aggregation methods significantly reduce performance volatility compared to raw individual filters.
-- **Top Performer**: The `logistic` aggregation strategy (threshold `0.4`) demonstrated the strongest balance between F1-Score mean and statistical stability (highest 95% Confidence Interval lower bound).
-- **Full Report**: Comprehensive metrics, statistical validation, and comparative plots will be made available shortly in a dedicated technical report.
----
-
-## Next Steps
-- **Filter Response Characterization**: Profiling and biological interpretation of activated CNN filters.
-- **Code Refactoring & Profiling**: Memory and runtime optimization of the thesis baseline.
-- **Production Pipeline**: End-to-end inference and decision pipeline.
+> **[Click here to see all code differences between the Thesis version and the Current version](https://github.com/enricodidoli-source/BinCellCNN/compare/thesis-version...main)**.
 
 ---
+
 ## Overview
- 
-This repository contains the code developed for my Master's thesis on **Measurable Residual Disease (MRD) detection** in B-cell Acute Lymphoblastic Leukaemia (B-ALL) using the **CellCNN** neural network architecture applied to multiparameter flow cytometry (MFC) data.
- 
+
+This repository contains the code developed for my Master's thesis on **Measurable Residual Disease (MRD) detection** in B-cell Acute Lymphoblastic Leukaemia (B-ALL) using the **BinCellCNN** neural network architecture applied to multiparameter flow cytometry (MFC) data.
+
 ---
- 
+
+## Roadmap & Current Implementations
+
+- **Code Cleanup:** Ongoing removal of remaining debug print statements and codebase readability refinement.
+- **Inference & Clinical Deployment:** Development of dedicated testing and direct classification versions optimized for clinical use cases.
+- **Cell-Level Analysis:** Implementation and integration of the full cell-level classification pipeline.
+
+---
+
 ## Repository Structure
  
 ```
 master-thesis/
 │
 ├── CellCNN/
-│   ├── CellCNN_modules/  # Python modules (.py) for CellCNN model (modified from the original implementation: https://github.com/eiriniar/CellCnn)
+│   ├── CellCNN_modules/  # Python modules (.py) for BinCellCNN model (modified from the original implementation: https://github.com/eiriniar/CellCnn)
 │   ├── modules/          # Python modules (.py) for data processing, training and evaluation
 │   └── notebooks/        # Jupyter notebooks for experiments and results
 │
@@ -58,7 +47,7 @@ master-thesis/
 ### 1. Clone the repository
  
 ```bash
-git clone https://github.com/enricodidoli-source/master-thesis.git
+git clone https://github.com/enricodidoli-source/BinCellCNN.git
 cd master-thesis
 ```
  
