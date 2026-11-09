@@ -81,8 +81,7 @@ def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_
     test_save_dir = f'{experiment_path}/outer_fold_{LOPOCV_fold_idx}/test/'
     os.makedirs(test_save_dir, exist_ok=True)
 
-    test_samples_preds, original_test_y = predict(config = training_config,
-                                                  test_pat = test_pat,
+    test_samples_preds, original_test_y = predict(test_pat = test_pat,
                                                   multiple_donations = multiple_donations,
                                                   ALL_DATASETS = ALL_DATASETS,
                                                   mem = mem,
@@ -97,6 +96,7 @@ def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_
     fold_end = time.time()
     print(f'\n Time elapsed since {LOPOCV_fold_idx+1}-th iteration started: {fold_end - full_process_time_start}\n')
 
-    seed_manager.save_state(tuning_save_dir)
+    seed_manager_dir = f'{experiment_path}/outer_fold_{LOPOCV_fold_idx}/'
+    seed_manager.save_state(seed_manager_dir)
     
     return test_samples_preds, original_test_y, best_thr

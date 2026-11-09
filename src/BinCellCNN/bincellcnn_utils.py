@@ -18,7 +18,7 @@ from scipy.cluster.hierarchy import linkage
 from scipy.cluster.hierarchy import fcluster
 from scipy import stats
 import flowio
-
+cluster_profiles
 
 # extra arguments accepted for backwards-compatibility (with the fcm-0.9.1 package)
 def loadFCS(filename, *args, **kwargs):

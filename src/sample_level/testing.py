@@ -78,7 +78,7 @@ def trials_test_BinCellCNN(models_lists, test_datasets_no_labels = None, seed_ma
 
 
 
-def predict(config, test_pat, multiple_donations, training_save_dir, test_save_dir, ALL_DATASETS = None, mem = None, seed_manager = None):
+def predict(test_pat, multiple_donations, training_save_dir, test_save_dir, ALL_DATASETS = None, mem = None, seed_manager = None):
             # Predict and Classify test samples
             original_test_datasets = None
 
