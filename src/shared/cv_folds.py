@@ -52,7 +52,7 @@ def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None, mem = None, l
 
 
 
-def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, seed_manager = None, label_column = 'IsBlast'):
+def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, seed_manager = None,  folds = 5, label_column = 'IsBlast'):
     """
     Builds the full LOPOCV structure: for each left-out patient, generates the inner
     k-fold CV splits for hyperparameter tuning.
@@ -69,7 +69,7 @@ def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, se
             CV_seed = 42 + i
         else:
             CV_seed = seed_manager.get_seed(f'Patient_division_LOPOCV_{i}')
-
+        print('CV_seed', CV_seed)
         healthy_donors, blast_donors, mixed_donors = donor_division(train_set_dict, ALL_DATASETS, label_column = label_column)
 
         left_out_patient = list(external_val_set_dict.keys())
@@ -78,7 +78,7 @@ def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, se
         h_pat, b_pat, m_pat, tot_pat = remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors, left_out_patient)
 
         # remove the Left Out patient and generate the folds for the 5 folds CV
-        k_folds = classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = 5, LOOCV_test = left_out_patient[0], shuffle_seed = CV_seed)
+        k_folds = classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = folds, LOOCV_test = left_out_patient[0], shuffle_seed = CV_seed)
 
         # k_folds is for the tuning. left_out_patient for the final training
         LOPOCV_patients_folds.append((k_folds, left_out_patient))
@@ -90,36 +90,21 @@ def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, se
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors,  test_donors_idx):
+def remove_test_patients_from_categories(healthy_donors, blast_donors, mixed_donors,  test_donors_idx = None):
     """
     Removes test patients from the three patients categories and generates a list of the remaining patients (train + validation).
     """
     h_pat, b_pat, m_pat = healthy_donors.copy(), blast_donors.copy(), mixed_donors.copy()
 
-    # remove patients in the external test set from the three patient categories
-    for pat in test_donors_idx:
-        if pat in healthy_donors:
-            h_pat.remove(pat)
-        if pat in blast_donors:
-             b_pat.remove(pat)
-        if pat in mixed_donors:
-            m_pat.remove(pat)
+    if test_donors_idx is not None:
+        # remove patients in the external test set from the three patient categories
+        for pat in test_donors_idx:
+            if pat in healthy_donors:
+                h_pat.remove(pat)
+            if pat in blast_donors:
+                b_pat.remove(pat)
+            if pat in mixed_donors:
+                m_pat.remove(pat)
 
     # generate the entire list of patients to split
     tot_pat = []
@@ -190,38 +175,3 @@ def classic_CV_train_val_splits(h_pat, b_pat, m_pat, tot_pat, folds = 3, LOOCV_t
     return tot_folds
 
 
-
-
-
-'''
-
-def extract_fold_features(chosen_perm, multiple_donations, tot_perc_list):
-    """
-    Extracts and aggregates file-level features for each train/validation fold.
-    """
-
-    fold_features = {}
-    for i, (train_set, val_set) in enumerate(chosen_perm):
-
-        ##### Train #####
-        # extract files from patients' id
-        set_train_files, set_val_files = [], []
-        for train_pat in train_set:
-            train_files = multiple_donations[train_pat] # indexes of files in ALL_DATASETS list
-            set_train_files += train_files 
-
-        train_file_perc = list(np.array(tot_perc_list)[set_train_files]) # extracts only the interested file pecentages
-        train_features = [train_set, train_file_perc, np.mean(train_file_perc), np.std(train_file_perc)]
-
-        ##### Validation #####
-        for val_pat in val_set:
-            val_files = multiple_donations[val_pat]
-            set_val_files += val_files
-
-        val_file_perc = list(np.array(tot_perc_list)[set_val_files])
-        val_features = [val_set, val_file_perc, np.mean(val_file_perc), np.std(val_file_perc)]
-
-        # assignes train and validation features to the i-th fold combination
-        fold_features[i] = [train_features, val_features]
-    return fold_features
-'''    

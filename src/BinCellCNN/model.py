@@ -227,6 +227,7 @@ class BinCellCNN(object):
         if ncell_per_sample is None:
         
             ncell_per_sample = np.min([len(x) for x in test_samples])
+            
         logger.info(f"Predictions based on multi-cell inputs containing {ncell_per_sample} cells.")
 
         # z-transform the new samples if we did that for the training samples
@@ -277,33 +278,7 @@ class BinCellCNN(object):
         print('np.mean(y_pred, axis=0)', np.mean(y_pred, axis=0))
         return np.mean(y_pred, axis=0) # computes the mean of the prediction results
 
-def data_transformation(dataset, labels = False):
-    if labels:
-        # Copy the 'IsBlast' column
-        dataset_labels = dataset[:, -1].copy()  # shape: (n_righe,)
-        dataset_labels = dataset_labels.astype(int) # convert data in integers
 
-        # Remove the 'IsBlast' column to not be included in the transformation
-        dataset_no_labels = dataset[:, :-1]  # shape: (n_righe, n_colonne - 1)
-        
-        z_scaler = StandardScaler(with_mean=True, with_std=True) 
-        z_scaler.fit(dataset_no_labels) #scale data
-
-        transformed_dataset_no_labels = z_scaler.transform(dataset_no_labels)
-
-        #append the 'IsBlast' column    
-        dataset_after = np.column_stack([transformed_dataset_no_labels, dataset_labels])
-   
-        
-    else:
-        
-        z_scaler = StandardScaler(with_mean=True, with_std=True) 
-        z_scaler.fit(dataset) #scale data
-
-        dataset_after = z_scaler.transform(dataset)
-        
-    return dataset_after, z_scaler
-        
 
 def grid_search_parameters(nfilter_choice, maxpool_percentages, learning_rate):
     param_grid = []
@@ -574,8 +549,9 @@ def train_model(train_samples = None, train_phenotypes = None, outdir = None,
     config['maxpool_percentage'] = chosen_mp_list
 
     # the top 3 performing networks
-    model_sorted_idx = np.argsort(scores)[::-1][:3]
     best_sorted_indices = np.argsort(scores)[::-1]
+    model_sorted_idx = best_sorted_indices[:3]
+    
     
     best_3_nets = [w_store[int(i)] for i in model_sorted_idx if int(i) in w_store]
     

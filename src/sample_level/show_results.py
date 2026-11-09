@@ -98,16 +98,7 @@ def elaborate_predictions(predictions_list, test_y, results = True, beta = 1, mc
 
 
 
-
-
-
-
-
-
-
-
-
-def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc = False, log = False, decimals = 4, mem = None, label_column = 'IsBlast'):
+def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc = False, decimals = 4, samples_ids = None, mem = None, label_column = 'IsBlast'):
     """
     Computes and shows the blast cell percentage for each sample across all patients.
     Optionally returns the percentage list.
@@ -117,26 +108,26 @@ def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc =
 
     tot_perc_list = []
     for pat_idx, samples_idx in multiple_donations.items():
-        if log:
-            print(samples_idx)
-        for sample in samples_idx:
 
-            dataset = ALL_DATASETS[sample]
+        for idx in samples_idx:
+            dataset = ALL_DATASETS[idx]
             blast_n = (dataset[label_column] == 1).sum()
             tot_perc_list.append(round((blast_n/len(dataset))*100, decimals))
-            if log:
-                print(f'sample: {sample}: {round((blast_n/len(dataset))*100, 2)}')
 
     positions = range(1, len(tot_perc_list) + 1)
 
     fig, ax1 = plt.subplots(figsize = [len(positions)/2,4])
     ax1.bar(list(range(1, len(tot_perc_list) + 1)), [max(tot_perc_list)]*len(tot_perc_list), alpha = 0.5)
     ax1.bar(list(range(1, len(tot_perc_list) + 1)), tot_perc_list)
+    
     ax1.set_xticks(positions)
 
     ax2 = ax1.twiny()
     ax2.set_xlim(ax1.get_xlim())
     ax2.set_xticks(ax1.get_xticks())
+
+    if samples_ids is not None:
+            ax1.set_xticklabels(samples_ids, size='x-small', rotation=60)#, ha='left')
 
     ax2.set_xticklabels(tot_perc_list, size = 'x-small')
     plt.show()
