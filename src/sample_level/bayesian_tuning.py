@@ -119,7 +119,7 @@ def create_BO_study(LOPOCV_fold_idx, seed_manager):
         return study
 
 def BO_trial(tuning_config, train_kfolds, study, param_list_dict, benchmark_list,
-                    BinCellCnn, multiple_donations, ALL_DATASETS,
+                    BinCellCnn, multiple_donations, ALL_DATASETS, ALL_DATASETS_LABELS,
                     outdir, mem, seed_manager, tuning_save_dir):
 
     is_pruned = False  # pruning flag
@@ -154,6 +154,7 @@ def BO_trial(tuning_config, train_kfolds, study, param_list_dict, benchmark_list
             config = trial_config,
             multiple_donations=multiple_donations,
             ALL_DATASETS=ALL_DATASETS,
+            ALL_DATASETS_LABELS=ALL_DATASETS_LABELS,
             outdir=outdir,
             mem=mem,
             seed_manager=seed_manager,
@@ -221,7 +222,7 @@ def save_metadata_and_timing(tuning_save_dir, starting_seed, LOPOCV_fold_idx,
     return
 
 def BO_tuning(LOPOCV_fold_idx, train_kfolds, param_list_dict, BinCellCnn, multiple_donations,
-    ALL_DATASETS, outdir, mem, seed_manager, tuning_config, tuning_save_dir):
+    ALL_DATASETS, ALL_DATASETS_LABELS, outdir, mem, seed_manager, tuning_config, tuning_save_dir):
 
     print('Start Bayesian Search for optimal ncells and nsubs parameters')
 
@@ -246,6 +247,7 @@ def BO_tuning(LOPOCV_fold_idx, train_kfolds, param_list_dict, BinCellCnn, multip
             BinCellCnn=BinCellCnn,
             multiple_donations=multiple_donations,
             ALL_DATASETS=ALL_DATASETS,
+            ALL_DATASETS_LABELS=ALL_DATASETS_LABELS,
             outdir=outdir,
             mem=mem,
             seed_manager=seed_manager,

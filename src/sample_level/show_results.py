@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 
-from src.shared.utils import flatten
+from src.shared.utils import flatten, load_element
 from src.sample_level.classification import phenotype_prediction
 
 
@@ -96,66 +96,43 @@ def elaborate_predictions(predictions_list, test_y, results = True, beta = 1, mc
     
     return pred_phenotype_df.T, accuracy_list , f1_scores_list, recall_scores_list, precision_scores_list
 
+def build_results_df(results_dir, n_folds):
+    rows = []
+    for i in range(n_folds):
+        try:
+            
+            fold_data = load_element(results_dir, f'fold_box_data_{i}')
+        except FileNotFoundError:
+            print(f'Fold {i} not found')
+            continue
+        print(f'Fold {i} found')
+        for box in fold_data:
+            rows.append({**box, 'fold': i})
+    return pd.DataFrame(rows)
 
-
-def show_blast_distribution_perc(ALL_DATASETS, multiple_donations, return_perc = False, decimals = 4, samples_ids = None, mem = None, label_column = 'IsBlast'):
-    """
-    Computes and shows the blast cell percentage for each sample across all patients.
-    Optionally returns the percentage list.
-    """
-    if mem:
-        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
-
-    tot_perc_list = []
-    for pat_idx, samples_idx in multiple_donations.items():
-
-        for idx in samples_idx:
-            dataset = ALL_DATASETS[idx]
-            blast_n = (dataset[label_column] == 1).sum()
-            tot_perc_list.append(round((blast_n/len(dataset))*100, decimals))
-
-    positions = range(1, len(tot_perc_list) + 1)
-
-    fig, ax1 = plt.subplots(figsize = [len(positions)/2,4])
-    ax1.bar(list(range(1, len(tot_perc_list) + 1)), [max(tot_perc_list)]*len(tot_perc_list), alpha = 0.5)
-    ax1.bar(list(range(1, len(tot_perc_list) + 1)), tot_perc_list)
-    
-    ax1.set_xticks(positions)
-
-    ax2 = ax1.twiny()
-    ax2.set_xlim(ax1.get_xlim())
-    ax2.set_xticks(ax1.get_xticks())
-
-    if samples_ids is not None:
-            ax1.set_xticklabels(samples_ids, size='x-small', rotation=60)#, ha='left')
-
-    ax2.set_xticklabels(tot_perc_list, size = 'x-small')
-    plt.show()
-
-    if return_perc:
-        return tot_perc_list
-
-    return
-
-
-
-def show_all_LOPO_boxplots(boxplot_data, timepoints_blast_perc, thresholds_list, num_samples_cum,
-                        save_dir = None, file_name = None, title = None, fold_or_seed = 'Fold', y_labels = None):
-    """
-    Plots per-sample score distributions as boxplots across all LOPO folds, with per-fold
-    threshold lines, blast percentage on the top axis, and misclassification markers.
-    """
+def show_all_LOPO_boxplots(results_df, save_dir=None, file_name=None, title=None,
+                           fold_or_seed='Fold', y_labels=None):
     sns.set_style("ticks")
+    df = results_df.reset_index(drop=True)
 
-    round_timepoints_blast_perc = [round(perc, 3) for perc in timepoints_blast_perc]
+    timepoints_labels = df['True_Label'].tolist()
+    timepoints_trials_scores = df['CV_Fold_Preds'].tolist()
 
-    timepoints_labels = [timepoint["True_Label"] for i, timepoint in enumerate(boxplot_data)]
-    timepoints_trials_scores = [timepoint["CV_Fold_Preds"] for timepoint in boxplot_data]
+    sample_thr = df['best_thr'].to_numpy()                      # soglia per sample
 
-    if y_labels:
-        x_axis_1_labels = y_labels[:len(timepoints_trials_scores)]
+    thresholds_list = np.unique(df['best_thr'].to_numpy())
+    by_fold = df.groupby('fold', sort=True)
+    num_samples_cum = by_fold.size().cumsum().tolist()
+    x_axis_1_labels = df['samples_ids'].tolist()
+
+    if 'perc' in df.columns:
+        timepoints_blast_perc = df['perc'].tolist()
+        round_timepoints_blast_perc = [round(perc, 3) for perc in timepoints_blast_perc]
+        has_perc =  True
     else:
-        x_axis_1_labels = timepoints_labels
+        has_perc = False
+
+
 
     n_box = len(timepoints_labels)
     fig, ax = plt.subplots(figsize=(max(0.5*n_box, 4), 4))
@@ -194,23 +171,19 @@ def show_all_LOPO_boxplots(boxplot_data, timepoints_blast_perc, thresholds_list,
     ax.set_ylabel("Positivity Score")
     ax.set_xticklabels(x_axis_1_labels, rotation=45, ha='right', fontsize=7)
 
-
-    ax2 = ax.twiny()
-
-    # Make ax2 have the same limits and ticks as ax1
-    ax2.set_xlim(ax.get_xlim())
-    ax2.set_xticks(ax.get_xticks()) # Positions [1, 2, 3, 4]
-
-    # Set the new labels for the top axis
-    ax2.set_xticklabels(round_timepoints_blast_perc, fontsize=7)
-    ax2.set_xlabel("% of Unhealthy cells per Sample")
+    if has_perc:
+        ax2 = ax.twiny()
+        ax2.set_xlim(ax.get_xlim())
+        ax2.set_xticks(ax.get_xticks())
+        ax2.set_xticklabels(round_timepoints_blast_perc, fontsize=7)
+        ax2.set_xlabel("% of Unhealthy cells per Sample")
 
     # tuned thresholds
     for i, threshold in enumerate(thresholds_list):
         if i == 0:
             x_min = 0.5
         else:
-            x_min = i + 0.5
+            x_min = num_samples_cum[i-1] + 0.5
         x_max = num_samples_cum[i] + 0.5
         print(x_max)
         box_label = f'j-th LOPO Threshold' if i == 0 else None
@@ -227,6 +200,7 @@ def show_all_LOPO_boxplots(boxplot_data, timepoints_blast_perc, thresholds_list,
     # misprediction marks
     
     mis_label = True
+    
     for s, sample in enumerate(timepoints_trials_scores):
 
         thr_index = num_samples_cum.index(next(x for x in num_samples_cum if x > s))
@@ -241,7 +215,7 @@ def show_all_LOPO_boxplots(boxplot_data, timepoints_blast_perc, thresholds_list,
 
             if mis_label:
                 mis_label = False
-    
+
     plt.ylim(-0.05, 1.05)
     if title is  None:
         title = "Positivity Score Distribution across LOPOCV Iterations"
@@ -255,6 +229,7 @@ def show_all_LOPO_boxplots(boxplot_data, timepoints_blast_perc, thresholds_list,
 
     plt.show()
     plt.close()
+
 
 
 

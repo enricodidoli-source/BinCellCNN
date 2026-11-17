@@ -9,6 +9,7 @@ def get_hyper(config):
     return (config['nfilter'], config['maxpool_p'], config['learning_r'])
 
 def get_param_list_dict(config):
+
     return {
         'ncells': (config['min_ncells'], config['max_ncells'], config['ncells_step']),
         'nsubs': (config['min_nsubs'], config['max_nsubs'], config['nsub_step']),
@@ -16,7 +17,8 @@ def get_param_list_dict(config):
     }
 
 def build_tuning_config(config):
-    return {
+    if config['perform_tuning']:
+        config_dict =  {
         'hyper': get_hyper(config),
         'grid': config['BO_grid'],
         'tuning_epochs': config['BO_tuning_epochs'],
@@ -24,9 +26,17 @@ def build_tuning_config(config):
         'trials': config['BO_trials'],
         'bayesian_comb': config['bayesian_comb'],
         'eval_metric': get_eval_metric(config['eval_metric']),
+        'perform_tuning': config['perform_tuning'],
+        'label_column': config['label_column'],
+        'remove_columns': config['remove_columns']
     }
+    else:
+        config_dict =  {'perform_tuning': config['perform_tuning']}
+    return config_dict
+
 
 def build_training_config(config, ncells, nsubs, bs):
+    
     return {
         'hyper': get_hyper(config),
         'grid': config['grid'],
@@ -37,4 +47,30 @@ def build_training_config(config, ncells, nsubs, bs):
         'nsubs': nsubs,
         'bs': int(bs),
         'eval_metric': get_eval_metric(config['eval_metric']),
+        'label_column': config['label_column'],
+        'remove_columns': config['remove_columns']
+    }
+
+def build_test_config(config):
+    
+    return {
+        'label_column': config['label_column'],
+        'remove_columns': config['remove_columns']
+
+    }
+
+
+def build_default_config(config):
+    return {
+        'hyper': get_hyper(config),
+        'grid': config['grid'],
+        'tuning_epochs': config['tuning_epochs'],
+        'tuning_nruns': config['tuning_nruns'],
+        'trials': config['trials'],
+        'ncells': config['ncells'],
+        'nsubs': config['nsubs'],
+        'bs': config['bs'],
+        'eval_metric': get_eval_metric(config['eval_metric']),
+        'label_column': config['label_column'],
+        'remove_columns': config['remove_columns']
     }

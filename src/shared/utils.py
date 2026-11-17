@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import sys
-
+from src.BinCellCNN.model import BinCellCNN
 
 def save_element(dir_path, name, element):
             os.makedirs(dir_path, exist_ok=True)

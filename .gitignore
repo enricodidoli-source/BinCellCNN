@@ -12,40 +12,25 @@ __pycache__/
 *.txt
 *.zip
 
-# Ignore datasets folder
+
+# Ignore patients data
 B-ALL_Datasets/
+Data/train_samples/
+Data/new_samples/
 
-
-# Ignore not useful folders
-Not_useful_anymore/
-Projects_Backup/
-
-# Ignore files in CellCNN folder
-CellCNN/__pycache__/
-CellCNN/not_to_push/
-
-# Ignore files in General_Functions folder
-General_Functions/__pycache__/
-General_Functions/not_to_push/
-
-# Ignore CSNN folder
-CSNN/
-
-
-# Ignore General_Functions folder
-General_Functions/
-
-# Ignore Not_Final_CellCNN folder
-Not_Final_CellCNN/
 
 # Ignore experiments results
-experiments/
+experiments/experiment_clinical_try_1/
+experiments/experiment_End_to_End_pipeline_CellCNN_default/
+experiments/experiment_End_to_End_pipeline_try_1/
 
 # Ignore work in progress notebooks
-CellCNN/notebooks/refactoring_single_cell_detection.ipynb
-CellCNN/notebooks/refactoring_single_cell_detection (2).ipynb
-CellCNN/notebooks/Refactorization_3.ipynb
+notebooks/refactoring_single_cell_detection.ipynb
+
+notebooks/results_elaboration_and_plotting/
+notebooks/training_classification/
 
 src/anything_else.py
-src/config.yml
 git
+
+dont_push/

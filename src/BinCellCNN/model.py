@@ -339,9 +339,9 @@ def load_train_valid_from_temp(train_samples=None, train_phenotypes=None,
 
     if mem is not None:
         print('Loading from Temp')
-        (train_samples, train_phenotypes) = mem.load_variables(['train_samples', 'train_phenotypes'])
+        (train_samples, train_phenotypes) = mem.load_variables(['train_samples', 'train_y'])
 
-        (valid_samples, valid_phenotypes) = mem.load_variables(['valid_samples', 'valid_phenotypes'])
+        (valid_samples, valid_phenotypes) = mem.load_variables(['valid_samples', 'valid_y'])
             
     else:
 

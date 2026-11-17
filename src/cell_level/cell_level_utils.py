@@ -9,10 +9,11 @@ from IPython.display import display
 from pathlib import Path
 import pandas as pd
 
-from model_grid import CellCnn
-from sample_level.timepoints_elaboration import load_data, donation_extraction
-from sample_level.utils import load_models, retrieve_labels
-
+from src.BinCellCNN.model import BinCellCNN
+from src.ball_dataset import load_data
+from src.shared.timepoints_elaboration import donation_extraction
+#from src.shared.utils import load_models, retrieve_labels
+from src.shared.labels import retrieve_labels
 
 def clear_RAM():
     plt.close('all')

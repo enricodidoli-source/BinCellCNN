@@ -8,17 +8,13 @@ from src.sample_level.bayesian_tuning import BO_tuning
 from src.sample_level.training import fit
 from src.sample_level.testing import predict
 from src.sample_level.configs import (
-    build_tuning_config, build_training_config, get_param_list_dict)
+    build_tuning_config, build_training_config, get_param_list_dict, build_default_config, build_test_config)
 
 from seed_manager import SeedManager
 
-def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_kfolds, test_pat , multiple_donations, ALL_DATASETS, mem = None):
+def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_kfolds, test_pat , multiple_donations, ALL_DATASETS, ALL_DATASETS_LABELS, mem = None):
     # --- Seed parameters ---
     starting_seed = config['starting_seed']
-
-    param_list_dict = get_param_list_dict(config)
-
-    print(param_list_dict)
     
     full_process_time_start = time.time()
 
@@ -32,33 +28,45 @@ def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_
     ## === load the samples === ##
 
     tuning_config = build_tuning_config(config)
+    print('tuning_config', tuning_config)
 
-    best_ncells, best_nsubs, best_bs, _ = BO_tuning(
-            LOPOCV_fold_idx=LOPOCV_fold_idx,
-            train_kfolds=train_kfolds,
-            param_list_dict=param_list_dict,
-            BinCellCnn=BinCellCnn,
-            multiple_donations=multiple_donations,
-            ALL_DATASETS=ALL_DATASETS,
-            outdir=weights_outdir,
-            mem=mem,
-            seed_manager=seed_manager,
-            tuning_config = tuning_config,
-            tuning_save_dir = tuning_save_dir
-        )
+    if tuning_config['perform_tuning']:
+        param_list_dict = get_param_list_dict(config)
 
-        # save seeds and timing
-    bayesian_LOPOCV_time = time.time() - full_process_time_start
-    print(f'bayesian_LOPOCV_time: {bayesian_LOPOCV_time}')
+        print(param_list_dict)
 
 
-    # === Training === #
-    print(best_bs)
-    training_config = build_training_config(config, best_ncells, best_nsubs, best_bs)
+        best_ncells, best_nsubs, best_bs, _ = BO_tuning(
+                LOPOCV_fold_idx=LOPOCV_fold_idx,
+                train_kfolds=train_kfolds,
+                param_list_dict=param_list_dict,
+                BinCellCnn=BinCellCnn,
+                multiple_donations=multiple_donations,
+                ALL_DATASETS=ALL_DATASETS,
+                ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
+                outdir=weights_outdir,
+                mem=mem,
+                seed_manager=seed_manager,
+                tuning_config = tuning_config,
+                tuning_save_dir = tuning_save_dir
+            )
 
-    print(f'Theta*: {best_ncells, best_nsubs, best_bs}')
+            # save seeds and timing
+        bayesian_LOPOCV_time = time.time() - full_process_time_start
+        print(f'bayesian_LOPOCV_time: {bayesian_LOPOCV_time}')
 
-    _, original_test_y = save_test_temp(test_pat, multiple_donations, ALL_DATASETS = ALL_DATASETS, mem = mem)
+
+        # === Training === #
+        print(best_bs)
+        print(f'Theta*: {best_ncells, best_nsubs, best_bs}')
+        
+        training_config = build_training_config(config, best_ncells, best_nsubs, best_bs)
+
+
+    else:
+        training_config = build_default_config(config)
+
+
 
     training_save_dir = f'{experiment_path}/outer_fold_{LOPOCV_fold_idx}/training/'
     os.makedirs(training_save_dir, exist_ok=True)
@@ -68,6 +76,7 @@ def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_
 
     _, best_thr = fit(multiple_donations = multiple_donations,
                                                ALL_DATASETS = ALL_DATASETS,
+                                              ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
                                                BinCellCnn = BinCellCnn,
                                                config = training_config,
                                                mem = mem,
@@ -81,9 +90,19 @@ def run_lopocv_fold(BinCellCnn, config, experiment_path, LOPOCV_fold_idx, train_
     test_save_dir = f'{experiment_path}/outer_fold_{LOPOCV_fold_idx}/test/'
     os.makedirs(test_save_dir, exist_ok=True)
 
-    test_samples_preds, original_test_y = predict(test_pat = test_pat,
+    test_config = build_test_config(config)
+
+    _, _ = save_test_temp(test_config,
+                          test_pat, multiple_donations, 
+                          ALL_DATASETS = ALL_DATASETS, 
+                          ALL_DATASETS_LABELS = ALL_DATASETS_LABELS, 
+                          mem = mem)
+
+    test_samples_preds, original_test_y = predict(test_config = test_config,
+                                                  test_pat = test_pat,
                                                   multiple_donations = multiple_donations,
                                                   ALL_DATASETS = ALL_DATASETS,
+                                                  ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
                                                   mem = mem,
                                                   training_save_dir = training_save_dir,
                                                   test_save_dir = test_save_dir)

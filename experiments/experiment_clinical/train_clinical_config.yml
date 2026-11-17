@@ -1,0 +1,61 @@
+# --- Dataset Elaboration parameters --- 
+sequence: 'sample_'
+extension: '*.csv'
+remove_columns: ['Original_ID']
+label_column: 'IsBlast'
+labels_level: 'cell'
+separator: ','
+decimal: '.'
+
+train_data_folder_path: 'C:/Users/admin/BinCellCNN/Data/art_train_samples/'
+
+
+# --- Seed parameters ---
+starting_seed: 42
+
+# --- Environment parameters --- 
+save_memory: False
+colab: True
+n_patients: None
+
+
+# --- Model Parameters ---
+eval_metric: f1_score
+
+# --- Tuning parameters ---
+perform_tuning: True
+bayesian_comb: 1
+
+BO_tuning_epochs: 1
+BO_tuning_nruns: 3
+
+BO_grid: False
+BO_trials: 1
+
+ncells_step: 100
+min_ncells: 100
+max_ncells: 200
+
+nsub_step: 5
+min_nsubs: 5
+max_nsubs: 10
+
+bs_step: 100
+min_bs: 100
+max_bs: 400
+
+# --- Training parameters ---
+tuning_epochs: 1
+tuning_nruns: 3
+
+grid: False
+trials: 1
+ 
+
+# --- Hyperparameters ---
+
+
+nfilter: [5, 7, 9]
+maxpool_p: [0.01, 1, 10, 100]
+learning_r: [0.001, 0.005]
+

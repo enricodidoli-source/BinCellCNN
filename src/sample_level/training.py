@@ -48,7 +48,7 @@ def train_BinCellCNN(BinCellCnn, train_datasets, train_y, config=None,
         ncell = config['ncells'], #200                # Number of cells per multi-cell input (sampled from the 'patient' datasets)
         nsubset = config['nsubs'],                  # Total number of multi-cell inputs generated per class (or sample and class)
         bs = config['bs'],   
-        per_sample = True,                  # For each sample, nsubset samples of ncell are performed
+        per_sample = True,           # For each sample, nsubset samples of ncell are performed
         nfilter_choice = nfilter,           # Range of possible number of filters
         maxpool_percentages = maxpool_p,    # list of k-percentage max_pooling
         learning_rate = learning_r,         # Learning rate list
@@ -129,31 +129,23 @@ def run_trials(BinCellCnn,  config, train_datasets = None, train_y = None,
 
 
 
-def inner_fold_iteration(BinCellCnn, config, train_donors_idx, val_donors_idx, multiple_donations, ALL_DATASETS, mem, seed_manager, outdir, return_models = False, label_column = 'IsBlast'):
+def inner_fold_iteration(BinCellCnn, config, train_donors_idx, val_donors_idx, multiple_donations, ALL_DATASETS, ALL_DATASETS_LABELS, mem, seed_manager, outdir, return_models = False):
+
 
 
     # extraxt samples using pre-slitted indexes
-    original_train_datasets, original_train_y, original_val_datasets, original_val_y = None, None, None, None
-    if not mem:
-        train_datasets_extracted = donation_extraction(train_donors_idx, multiple_donations, ALL_DATASETS=ALL_DATASETS, mem=mem)
-        original_train_datasets, original_train_y = retrieve_labels(train_datasets_extracted, remove=True, flat=True, label_column = label_column)
-        clear_RAM(variables_names=['train_datasets_extracted'])
-
-        val_datasets_extracted = donation_extraction(val_donors_idx, multiple_donations, ALL_DATASETS=ALL_DATASETS, mem=mem)
-        original_val_datasets, original_val_y = retrieve_labels(val_datasets_extracted, remove=True, flat=True,  label_column = label_column)
-        clear_RAM(variables_names=['val_datasets_extracted'])
-
+    if mem:
+        original_train_datasets, original_train_y, original_val_datasets, original_val_y = None, None, None, None
 
     # remove labels (random search without labels is required)
-    train, val, original_train_y, original_val_y = train_val_finalizing(
-        train_datasets=original_train_datasets,
-        original_train_y=original_train_y,
-        val_datasets=original_val_datasets,
-        original_val_y=original_val_y,
-        mem=mem,
-        multiple_donations = multiple_donations,
-        train_donors_idx = train_donors_idx,
-        val_donors_idx = val_donors_idx)
+    train, val, original_train_y, original_val_y = train_val_finalizing(config, 
+                    multiple_donations = multiple_donations, 
+                    train_donors_idx = train_donors_idx, 
+                    val_donors_idx = val_donors_idx, 
+                    ALL_DATASETS  = ALL_DATASETS, 
+                    ALL_DATASETS_LABELS  = ALL_DATASETS_LABELS,
+                    mem = mem,
+                         )
 
     print(original_train_y)
     print(original_val_y)
@@ -195,7 +187,7 @@ def inner_fold_iteration(BinCellCnn, config, train_donors_idx, val_donors_idx, m
     return f1_scores_list, predictions_list, original_val_y, results_list
 
 
-def fit(BinCellCnn, multiple_donations, ALL_DATASETS, config, mem, seed_manager, save_dir, outdir, train_kfolds):
+def fit(BinCellCnn, multiple_donations, ALL_DATASETS, ALL_DATASETS_LABELS, config, mem, seed_manager, save_dir, outdir, train_kfolds):
 
     across_folds_preds = []
     test_samples_preds = []
@@ -231,6 +223,7 @@ def fit(BinCellCnn, multiple_donations, ALL_DATASETS, config, mem, seed_manager,
                     val_donors_idx=val_donors_idx,
                     multiple_donations=multiple_donations,
                     ALL_DATASETS=ALL_DATASETS,
+                    ALL_DATASETS_LABELS=ALL_DATASETS_LABELS,
                     mem=mem,
                     seed_manager=seed_manager,
                     return_models=True,

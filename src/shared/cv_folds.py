@@ -36,12 +36,18 @@ def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None, mem = None, l
 
         test = {} #store patient
         test[patient] = multiple_donations[patient]
+        
         if ALL_DATASETS is not None:
+
             percs = []
             for sample_idx in multiple_donations[patient]:
+                
                 sample = ALL_DATASETS[sample_idx]
-                p = round(((sample[label_column] == 1).sum()/len(sample))*100, 5) # perc
-                percs.append(p)
+                if label_column in sample.columns:
+                    p = round(((sample[label_column] == 1).sum()/len(sample))*100, 5) # perc
+                    percs.append(p)
+                else:
+                    percs.append(None)
             print(prov_multiple.keys(), test.keys(), percs)
 
         full_LOPOCV_dicts.append((prov_multiple, test)) # append folds

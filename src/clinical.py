@@ -8,23 +8,83 @@ import matplotlib.pyplot as plt
 import sys
 import pickle
 import time
+import glob
 
-from src.shared.timepoints_elaboration import donation_extraction
+from src.shared.timepoints_elaboration import (donation_extraction, get_sample_ids,  
+                                                donor_division, sort_dataset,
+                                                get_patient_identifier, get_sorted_df)
 from src.shared.labels import retrieve_labels
 
 from src.sample_level.bayesian_tuning import BO_tuning
 from src.sample_level.training import fit
 from src.sample_level.testing import predict, trials_test_BinCellCNN
 from src.sample_level.configs import (
-    build_tuning_config, build_training_config, get_param_list_dict)
-from src.shared.utils import save_element
+    build_tuning_config, build_training_config, get_param_list_dict, build_default_config)
+from src.shared.utils import save_element, load_element
 
 from seed_manager import SeedManager
 from memory_utils import clear_RAM
 
 from src.shared.cv_folds import remove_test_patients_from_categories, classic_CV_train_val_splits
-from src.shared.timepoints_elaboration import donor_division
-from src.shared.utils import load_element
+
+
+def load_new_data(config, data_folder_path, mem = None): #, remove_columns = None, label_column = 'IsBlast', sequence = 'sample_', labels_level = 'cell'):
+
+    remove_columns = config['remove_columns']
+    label_column = config['label_column']
+    sequence = config['sequence']
+    separator = config['separator']
+    decimal = config['decimal']
+    ext = config['extension']
+
+    files_list = glob.glob(os.path.join(data_folder_path, ext))
+    files_list = sorted(
+        files_list,
+        key=lambda f: tuple(
+            float(x) for x in get_patient_identifier(f, sequence=sequence, ext=ext)
+        )
+    )
+    print(files_list)
+    ALL_DATASETS = []
+
+    multiple_donations = {}
+    samples_info_dict = {}
+    counter = 0
+
+    for file_path in files_list:
+
+        patient_id, time_point_days = get_patient_identifier(file_path, sequence = sequence, ext = ext)
+
+        str_patient_id = str(int(patient_id))
+        if str_patient_id not in multiple_donations.keys():
+
+                    multiple_donations[str_patient_id] = []
+                    multiple_donations[str_patient_id].append(counter)
+        else:
+                    multiple_donations[str_patient_id].append(counter)
+
+
+        sample = pd.read_csv(file_path, sep = separator, decimal = decimal).astype('float32')
+        print(sample.head())
+        if remove_columns:
+            for col in remove_columns:
+                if col in sample.columns:
+                    print('col', col)
+                    sample = sample.drop(columns=[col])
+        print(sample.head())
+        ALL_DATASETS.append(sample)
+
+        samples_info_dict[counter] = [len(sample), patient_id, time_point_days, None]
+
+        print(f"Elaborating file {counter}: {file_path}") # log
+        counter += 1
+    print('samples_info_dict', samples_info_dict)
+    samples_info_df = get_sorted_df(samples_info_dict, labels_level = 'sample')
+
+    sorted_patients = np.unique(samples_info_df['patient_id'])
+    sorted_ALL_DATASETS, sorted_multiple_donations = sort_dataset(ALL_DATASETS, multiple_donations, sorted_patients)
+
+    return sorted_ALL_DATASETS, samples_info_df
 
 
 def generate_clinical_folds(multiple_donations, ALL_DATASETS = None, mem = None, seed_manager = None, folds = 5, label_column = 'IsBlast'):
@@ -53,14 +113,16 @@ def generate_clinical_folds(multiple_donations, ALL_DATASETS = None, mem = None,
     clear_RAM(['ALL_DATASETS'])
     return k_folds
    
-def tuning_and_train_model(BinCellCnn, config, experiment_path, train_kfolds, multiple_donations, ALL_DATASETS, mem = None, seed_manager = None):
+
+
+def tuning_and_train_model(BinCellCnn, config, experiment_path, train_kfolds, multiple_donations, ALL_DATASETS, ALL_DATASETS_LABELS, mem = None, seed_manager = None):
     
     # --- Seed parameters ---
     #starting_seed = config['starting_seed']
 
-    param_list_dict = get_param_list_dict(config)
+    #param_list_dict = get_param_list_dict(config)
 
-    print(param_list_dict)
+    #print(param_list_dict)
     
     full_process_time_start = time.time()
 
@@ -70,33 +132,45 @@ def tuning_and_train_model(BinCellCnn, config, experiment_path, train_kfolds, mu
     os.makedirs(weights_outdir, exist_ok=True)
 
     ## === load the samples === ##
-
     tuning_config = build_tuning_config(config)
+    print('tuning_config', tuning_config)
 
-    best_ncells, best_nsubs, best_bs, _ = BO_tuning(
-            LOPOCV_fold_idx=0,
-            train_kfolds=train_kfolds,
-            param_list_dict=param_list_dict,
-            BinCellCnn=BinCellCnn,
-            multiple_donations=multiple_donations,
-            ALL_DATASETS=ALL_DATASETS,
-            outdir=weights_outdir,
-            mem=mem,
-            seed_manager=seed_manager,
-            tuning_config = tuning_config,
-            tuning_save_dir = tuning_save_dir
-        )
+    if tuning_config['perform_tuning']:
+        param_list_dict = get_param_list_dict(config)
+
+        print(param_list_dict)
+
+    #tuning_config = build_tuning_config(config)
+
+        best_ncells, best_nsubs, best_bs, _ = BO_tuning(
+                LOPOCV_fold_idx=0,
+                train_kfolds=train_kfolds,
+                param_list_dict=param_list_dict,
+                BinCellCnn=BinCellCnn,
+                multiple_donations=multiple_donations,
+                ALL_DATASETS=ALL_DATASETS,
+                ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
+                outdir=weights_outdir,
+                mem=mem,
+                seed_manager=seed_manager,
+                tuning_config = tuning_config,
+                tuning_save_dir = tuning_save_dir
+            )
 
         # save seeds and timing
-    bayesian_LOPOCV_time = time.time() - full_process_time_start
-    print(f'bayesian_LOPOCV_time: {bayesian_LOPOCV_time}')
+        bayesian_LOPOCV_time = time.time() - full_process_time_start
+        print(f'bayesian_LOPOCV_time: {bayesian_LOPOCV_time}')
 
 
-    # === Training === #
-    print(best_bs)
-    training_config = build_training_config(config, best_ncells, best_nsubs, best_bs)
+        # === Training === #
 
-    print(f'Theta*: {best_ncells, best_nsubs, best_bs}')
+        print(f'Theta*: {best_ncells, best_nsubs, best_bs}')
+        training_config = build_training_config(config, best_ncells, best_nsubs, best_bs)
+
+
+    else:
+        training_config = build_default_config(config)
+       
 
     training_save_dir = f'{experiment_path}/training/'
     os.makedirs(training_save_dir, exist_ok=True)
@@ -106,6 +180,7 @@ def tuning_and_train_model(BinCellCnn, config, experiment_path, train_kfolds, mu
 
     CV_models, best_thr = fit(multiple_donations = multiple_donations,
                                                ALL_DATASETS = ALL_DATASETS,
+                                               ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
                                                BinCellCnn = BinCellCnn,
                                                config = training_config,
                                                mem = mem,
@@ -141,8 +216,8 @@ def clinical_predict(new_unlabelled_samples, training_save_dir, test_save_dir, s
 
             return test_samples_preds
 
-
-def classify_new_samples(experiment_path, new_unlabelled_samples, samples_ids, seed_manager = None):
+'''
+def classify_new_samples(experiment_path, new_unlabelled_samples, samples_info_df, seed_manager = None):
     
     training_save_dir = f'{experiment_path}/training/'
     classification_save_dir = f'{experiment_path}/classification_results/'
@@ -161,7 +236,38 @@ def classify_new_samples(experiment_path, new_unlabelled_samples, samples_ids, s
     print('test_samples_preds', test_samples_preds)
 
     seed_manager.save_state(experiment_path)
+    patient_samples_info_df = samples_info_df[samples_info_df['patient_id']]
+    samples_ids = get_sample_ids(patient_samples_info_df)
     
+    plot_data = prepare_boxplot_data(classification_save_dir, test_samples_preds,  best_thr = best_thr, samples_ids = samples_ids)
+    print('plot_data', plot_data)
+    show_clinical_boxplots(plot_data = plot_data,
+                          save_dir = classification_save_dir, file_name = 'Positivity_Score_boxplots.pdf',
+                          title = None,
+                          fold_or_seed = 'Fold')
+    
+    return test_samples_preds, best_thr
+'''
+def classify_new_samples(experiment_path, new_unlabelled_samples, samples_info_df, seed_manager = None):
+    
+    training_save_dir = f'{experiment_path}/training/'
+    classification_save_dir = f'{experiment_path}/classification_results/'
+
+    
+    CV_models = load_element(training_save_dir, 'CV_models')
+    best_thr = load_element(training_save_dir, 'best_thr')
+
+    # === Testing === #
+
+    test_samples_preds = clinical_predict(new_unlabelled_samples = new_unlabelled_samples,
+                                                  training_save_dir = training_save_dir,
+                                                  test_save_dir = classification_save_dir,
+                                                  seed_manager = seed_manager)
+
+    print('test_samples_preds', test_samples_preds)
+
+    seed_manager.save_state(experiment_path)
+    samples_ids = get_sample_ids(samples_info_df)
     
     plot_data = prepare_boxplot_data(classification_save_dir, test_samples_preds,  best_thr = best_thr, samples_ids = samples_ids)
     print('plot_data', plot_data)
@@ -173,6 +279,7 @@ def classify_new_samples(experiment_path, new_unlabelled_samples, samples_ids, s
     return test_samples_preds, best_thr
 
 
+
 def _temp_test_extraction(test_pat, multiple_donations, ALL_DATASETS = None, mem = None):
     (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
 
@@ -181,6 +288,13 @@ def _temp_test_extraction(test_pat, multiple_donations, ALL_DATASETS = None, mem
     return original_test_datasets, original_test_y
 
 import seaborn as sns
+
+
+
+
+
+
+
 
 
 def show_clinical_boxplots(plot_data,
@@ -215,7 +329,7 @@ def show_clinical_boxplots(plot_data,
                                                   showmeans=True,      # shows the mean
                                                   meanline=True, showfliers=False)
     
-    ax.set_xticklabels(ID_labels, rotate = 60)
+    ax.set_xticklabels(ID_labels, rotation = 60)
     
     for patch in bp['boxes']:
         patch.set_alpha(0.3)

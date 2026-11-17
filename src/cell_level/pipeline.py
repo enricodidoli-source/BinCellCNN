@@ -33,15 +33,15 @@ from cell_level.filter_selection import (
     rebuild_metadata,         
     apply_backup_if_needed
 )
-from cell_level.evaluation import (
+from src.cell_level.evaluation import (
     evaluate_single_filter, 
     get_best_thr, 
     get_metrics_df,
     add_classification_metrics
 )
 
-from sample_level.timepoints_elaboration import donation_extraction
-from sample_level.utils import flatten, retrieve_labels
+from src.shared.timepoints_elaboration import donation_extraction
+#from src.shared.utils import flatten, retrieve_labels
 
 
 
