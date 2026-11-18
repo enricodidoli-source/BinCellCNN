@@ -1,7 +1,7 @@
 # --- Dataset Elaboration parameters --- 
 
 extension: '*.csv'
-remove_columns: ['Original_ID', 'IsBlast']
+remove_columns: ['Original_ID', 'class']
 label_column: None
 sequence: 'sample_'
 separator: ','
@@ -12,7 +12,6 @@ new_data_folder_path: 'C:/Users/admin/BinCellCNN/Data/art_new_samples/'
 
 # --- Seed parameters ---
 starting_seed: 42
-
 
 
 

@@ -47,8 +47,17 @@ def get_sample_ids(samples_info_df):
     return pat_sample_ids
 
 
-def load_data(data_folder_path, ext = '*.csv', max_file = None,  mem = None, remove_columns = None, label_column = 'IsBlast', sequence = 'sample_', labels_level = 'cell'):
 
+def load_data(config, data_folder_path, mem = None): #, remove_columns = None, label_column = 'IsBlast', sequence = 'sample_', labels_level = 'cell'):
+
+    remove_columns = config['remove_columns']
+    label_column = config['label_column']
+    labels_level = config['labels_level']
+    sequence = config['sequence']
+    separator = config['separator']
+    decimal = config['decimal']
+    ext = config['extension']
+    
     files_list = glob.glob(os.path.join(data_folder_path, ext))
     files_list = sorted(
         files_list,
@@ -77,7 +86,7 @@ def load_data(data_folder_path, ext = '*.csv', max_file = None,  mem = None, rem
                     multiple_donations[str_patient_id].append(counter)
 
 
-        sample = pd.read_csv(file_path, sep = ';', decimal = ',').astype('float32')
+        sample = pd.read_csv(file_path, sep = separator, decimal = decimal).astype('float32')
         
         if labels_level == 'cell':
             if label_column not in sample.columns:
@@ -94,7 +103,7 @@ def load_data(data_folder_path, ext = '*.csv', max_file = None,  mem = None, rem
         
         data_labels_folder_path = f'{data_folder_path}/samples_labels'
         label_path = os.path.join(data_labels_folder_path, f'sample_y_{sequence}{patient_id}_D{time_point_days}.csv')
-        sample_y = pd.read_csv(label_path, sep = ';', decimal = ',').astype('float32')
+        sample_y = pd.read_csv(label_path, sep = separator, decimal = decimal).astype('float32')
 
         label = int(sample_y['label'].iloc[0])
         print(label)
@@ -117,7 +126,10 @@ def load_data(data_folder_path, ext = '*.csv', max_file = None,  mem = None, rem
 
 
     sorted_patients = np.unique(samples_info_df['patient_id'])
-    sorted_ALL_DATASETS, sorted_ALL_DATASETS_LABELS, sorted_multiple_donations = sort_dataset(ALL_DATASETS, ALL_DATASETS_LABELS, multiple_donations, sorted_patients)
+    sorted_ALL_DATASETS, sorted_ALL_DATASETS_LABELS, sorted_multiple_donations = sort_dataset(ALL_DATASETS = ALL_DATASETS,
+                                                                                              ALL_DATASETS_LABELS = ALL_DATASETS_LABELS,
+                                                                                              multiple_donations = multiple_donations, 
+                                                                                              sorted_patients = sorted_patients)
 
     if mem:
         mem.save_and_clear(variables = [sorted_ALL_DATASETS, sorted_ALL_DATASETS_LABELS], variables_names = ['ALL_DATASETS', 'ALL_DATASETS_LABELS'], clear = True, force = True)

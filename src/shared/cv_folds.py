@@ -19,13 +19,14 @@ from src.shared.timepoints_elaboration import donor_division
 
 # LOPOCV 
 
-def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None, mem = None, label_column = 'IsBlast'):
+def generate_LOPOCV_dicts(config, multiple_donations, ALL_DATASETS = None, mem = None):
     """
     Generates Leave-One-Patient-Out Cross-Validation (LOPOCV) fold pairs.
     For each patient, creates a (train_dict, test_dict) tuple where the patient is the test set.
     Optionally computes blast percentages for the test patient's samples.
 
     """
+    label_column = config['label_column']
     if mem:
         (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
 
@@ -58,13 +59,16 @@ def generate_LOPOCV_dicts(multiple_donations, ALL_DATASETS = None, mem = None, l
 
 
 
-def generate_LOPOCV_folds(full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, seed_manager = None,  folds = 5, label_column = 'IsBlast'):
+def generate_LOPOCV_folds(config, full_LOPOCV_dicts, ALL_DATASETS = None, mem = None, seed_manager = None):
     """
     Builds the full LOPOCV structure: for each left-out patient, generates the inner
     k-fold CV splits for hyperparameter tuning.
 
     """
 
+    label_column = config['label_column']
+    folds = config['n_cv_folds']
+    
     if mem:
         (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
 

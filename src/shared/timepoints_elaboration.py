@@ -160,7 +160,7 @@ def load_data(config, data_folder_path, mem = None): #, remove_columns = None, l
         data_labels_folder_path = f'{data_folder_path}/samples_labels'
         label_path = os.path.join(data_labels_folder_path, f'{sequence}y_{patient_id}_{time_point_days}.csv')
         sample_y = pd.read_csv(label_path, sep = separator, decimal = decimal).astype('float32')
-        label = int(sample_y['label'])
+        label = int(sample_y['label'].iloc[0])
         print(label)
 
         ALL_DATASETS_LABELS.append(label)
@@ -247,130 +247,6 @@ def get_sample_info(sample, label_column):
     sample_info = [cells_n, healthy_n, blast_n, healthy_p, blast_p]
     return sample_info
 
-
-'''
-def load_data(data_path, ext = '*.csv', mem = None, remove_columns: list = None):
-    """
-    Loads CSV datasets from a folder, organizes them by patient via patient_code_extraction,
-    reassigns datasets with no ID, and returns a sorted patient-to-file-index mapping.
-    """
-    print(data_path)
-    #files_list = glob.glob(os.path.join(data_path, ext))
-    files_list = glob.glob(os.path.join(data_path, ext))
-
-    ALL_DATASETS = []
-    multiple_donations = {}
-    samples_ids = []
-    patient_samples = []
-    counter = 0
-    for file_path in files_list:
-        #dataset = pd.read_csv(file_path, sep = ';', decimal = ',').astype('float32')
-        dataset = pd.read_csv(file_path, sep=',', decimal='.').astype('float32')
-        print(dataset)
-
-        if remove_columns:
-            for col in remove_columns:
-                if col in dataset.columns:
-                    print(col)
-                    dataset = dataset.drop(columns=[col])
-        ALL_DATASETS.append(dataset) # list of all datasets
-
-        # divide the datasets by donor
-        sequence = 'sample_'
-        ext_length = len(ext) - 1
-
-        if sequence in file_path:
-            idx = file_path.find(sequence)
-            sample_name = file_path[idx:-ext_length]
-
-        samples_ids.append(sample_name)
-        splitted_name = sample_name.split('_')
-
-        patient_id = splitted_name[1]
-        #sample_id = int(splitted_name[2])
-
-        if patient_id not in multiple_donations:
-            multiple_donations[patient_id] = [counter]
-        else:
-            multiple_donations[patient_id].append(counter)
-
-
-        print(multiple_donations)
-
-        counter += 1
-        print(f"Elaborating file {splitted_name}: {file_path}") # information about the process
-
-    #return
-    patients = [int(key) for key in list(multiple_donations.keys())]
-
-    sorted_multiple_donations = {}
-    sorted_ALL_DATASETS = []
-
-    for pat_idx in range(1, max(patients) + 1):
-        if pat_idx in patients:
-            sorted_multiple_donations[str(pat_idx)] = multiple_donations[str(pat_idx)]
-
-    if mem:
-        mem.save_and_clear(variables = [ALL_DATASETS], variables_names = ['ALL_DATASETS'], clear = True, force = True)
-        return sorted_multiple_donations, None, samples_ids
-    else:
-        print(len(ALL_DATASETS))
-        return sorted_multiple_donations, ALL_DATASETS, samples_ids
-
-def donation_extraction(donors_idx, multiple_donations, ALL_DATASETS = None, mem = None, remove_columns = ['Original_ID'] ):
-    """ Retrieves specific donors datasets (for ex. donors for train) from all datasets list """
-
-    if mem:
-        (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
-
-    datasets_extracted = []
-    for donor in donors_idx:
-        donor_datasets = multiple_donations[donor]
-
-        donor_donations = []
-
-        for donation in donor_datasets:
-            donation_dataset = ALL_DATASETS[donation]
-            if remove_columns:
-                for col in remove_columns:
-                    if col in donation_dataset.columns:
-
-                        donation_dataset = donation_dataset.drop(columns=[col])
-            donor_donations.append(donation_dataset)
-
-        datasets_extracted.append(donor_donations)
-
-    return datasets_extracted
-
-
-def label_extraction(donors_idx, multiple_donations, ALL_DATASETS_LABELS = None, mem = None):
-    """ Retrieves specific donors datasets (for ex. donors for train) from all datasets list """
-
-    if mem:
-        (ALL_DATASETS_LABELS,) = mem.load_variables(['ALL_DATASETS_LABELS'])
-
-    labels_extracted = []
-    for donor in donors_idx:
-        donor_labels = multiple_donations[donor]
-
-        donor_donations = []
-
-        for donation in donor_labels:
-            donation_label = ALL_DATASETS_LABELS[donation]
-            donor_donations.append(donation_label)
-
-        labels_extracted.append(donor_donations)
-
-    return labels_extracted
-
-def sample_label_extraction(donors_idx, multiple_donations, ALL_DATASETS = None, ALL_DATASETS_LABELS = None, mem = None, remove_columns = None):
-    """ Retrieves specific donors datasets (for ex. donors for train) from all datasets list """
-
-    test_datasets_extracted = donation_extraction(donors_idx, multiple_donations, ALL_DATASETS, mem, remove_columns = remove_columns)
-    test_labels_extracted = label_extraction(donors_idx, multiple_donations, ALL_DATASETS_LABELS, mem)
-
-    return test_datasets_extracted, test_labels_extracted
-'''
 
 def donation_extraction(donors_idx, multiple_donations, ALL_DATASETS = None, mem = None, remove_columns = ['Original_ID'] ):
     """ Retrieves specific donors datasets (for ex. donors for train) from all datasets list """
@@ -459,7 +335,9 @@ def donor_division(multiple_donations: dict, all_datasets, label_column = 'IsBla
 
 
 
-def take_first_n_patients(multiple_donations, n_patients = None):
+def take_first_n_patients(config,  multiple_donations):
+    n_patients = config['n_patients']
+    
     if n_patients is None:
         return multiple_donations
 

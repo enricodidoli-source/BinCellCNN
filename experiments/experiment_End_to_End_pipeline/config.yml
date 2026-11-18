@@ -1,25 +1,35 @@
+# --- Dataset Elaboration parameters --- 
+sequence: 'sample_'
+extension: '*.csv'
+remove_columns: ['Original_ID']
+label_column: 'class'
+labels_level: 'cell'
+separator: ','
+decimal: '.'
+
+train_data_folder_path: 'C:/Users/admin/BinCellCNN/Data/art_train_samples/'
+
 # --- Seed parameters ---
 starting_seed: 42
 
 # --- Environment parameters --- 
-save_memory: True
+save_memory: False
 colab: False
-n_patients: 6
-
-# --- LOPOCV parameters --- 
-start_lopocv_fold: 0
-end_lopocv_fold: 1
+n_patients: null
+n_cv_folds: 3
 
 # --- Model Parameters ---
-eval_metric: f1_score
-
+eval_metric: 'f1_score'
+    
 # --- Tuning parameters ---
+perform_tuning: True
+
 bayesian_comb: 1
 
 BO_tuning_epochs: 1
 BO_tuning_nruns: 3
 
-BO_grid: false
+BO_grid: False
 BO_trials: 1
 
 ncells_step: 100
@@ -38,7 +48,7 @@ max_bs: 400
 tuning_epochs: 1
 tuning_nruns: 3
 
-grid: false
+grid: False
 trials: 1
  
 

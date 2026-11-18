@@ -26,11 +26,14 @@ experiments/experiment_End_to_End_pipeline_try_1/
 
 # Ignore work in progress notebooks
 notebooks/refactoring_single_cell_detection.ipynb
-
 notebooks/results_elaboration_and_plotting/
 notebooks/training_classification/
+
+notebooks/research/End-to-End_LOPOCV_pipeline_CellCNN_Default.ipynb
+
 
 src/anything_else.py
 git
 
 dont_push/
+temp_var/

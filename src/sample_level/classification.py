@@ -12,29 +12,31 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score 
 from sklearn.metrics import matthews_corrcoef
-from sklearn.metrics import roc_curve
+from sklearn.metrics import precision_recall_curve
 
 
 
 def get_best_thr(val_predicted_for_roc_folds):
+    
             # rebuild dataset predictions
             predictions_list = []
-
             for fold_pred_list, val_y in val_predicted_for_roc_folds: # fold
                 print('fold_pred_list', fold_pred_list)
-                seed_pred_list = np.mean(fold_pred_list, axis = 0) # average across weigths initialization
-                print('seed_pred_list', seed_pred_list)
+                #seed_pred_list = np.mean(fold_pred_list, axis = 0) # average across weigths initialization
+                #print('seed_pred_list', seed_pred_list)
 
                 avg_w_init_pred_list = np.mean(fold_pred_list, axis = 0) # average across weigths initialization
                 print('avg_w_init_pred_list', avg_w_init_pred_list)
 
-                #for sample_pred in fold_pred_list[0]: # check if this is the seed level
-                predictions_list = np.hstack((predictions_list, avg_w_init_pred_list))
+                predictions_list.append(avg_w_init_pred_list)
+        
+            predictions_array = np.concatenate(predictions_list)
+            print('predictions_array', predictions_array)
 
             new_val_y = flatten([val_y for _, val_y in val_predicted_for_roc_folds])
             print(new_val_y)
-            prec, rec, thr = roc_curve(new_val_y, predictions_list, pos_label=1)# compute ROC curve
-
+            prec, rec, thr = precision_recall_curve(new_val_y, predictions_array, pos_label=1)
+    
                 # Calculate F1 score for all thresholds
             f1_curve = 2 * prec * rec / (prec + rec + 1e-12)
             best_idx = np.argmax(f1_curve[:-1])

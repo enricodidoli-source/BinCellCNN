@@ -2,7 +2,7 @@
 sequence: 'sample_'
 extension: '*.csv'
 remove_columns: ['Original_ID']
-label_column: 'IsBlast'
+label_column: 'class'
 labels_level: 'cell'
 separator: ','
 decimal: '.'
@@ -15,12 +15,12 @@ starting_seed: 42
 
 # --- Environment parameters --- 
 save_memory: False
-colab: True
-n_patients: None
-
+colab: False
+n_patients: null
+n_cv_folds: 3
 
 # --- Model Parameters ---
-eval_metric: f1_score
+eval_metric: 'f1_score'
 
 # --- Tuning parameters ---
 perform_tuning: True

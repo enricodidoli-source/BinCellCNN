@@ -9,6 +9,7 @@ import sys
 import pickle
 import time
 import glob
+import seaborn as sns
 
 from src.shared.timepoints_elaboration import (donation_extraction, get_sample_ids,  
                                                 donor_division, sort_dataset,
@@ -87,13 +88,14 @@ def load_new_data(config, data_folder_path, mem = None): #, remove_columns = Non
     return sorted_ALL_DATASETS, samples_info_df
 
 
-def generate_clinical_folds(multiple_donations, ALL_DATASETS = None, mem = None, seed_manager = None, folds = 5, label_column = 'IsBlast'):
+def generate_clinical_folds(config, multiple_donations, ALL_DATASETS = None, mem = None, seed_manager = None):
     """
     Builds the full LOPOCV structure: for each left-out patient, generates the inner
     k-fold CV splits for hyperparameter tuning.
 
     """
-
+    folds = config['n_cv_folds']
+    label_column = config['label_column']
     if mem:
         (ALL_DATASETS,) = mem.load_variables(['ALL_DATASETS'])
 
@@ -216,38 +218,7 @@ def clinical_predict(new_unlabelled_samples, training_save_dir, test_save_dir, s
 
             return test_samples_preds
 
-'''
-def classify_new_samples(experiment_path, new_unlabelled_samples, samples_info_df, seed_manager = None):
-    
-    training_save_dir = f'{experiment_path}/training/'
-    classification_save_dir = f'{experiment_path}/classification_results/'
 
-    
-    CV_models = load_element(training_save_dir, 'CV_models')
-    best_thr = load_element(training_save_dir, 'best_thr')
-
-    # === Testing === #
-
-    test_samples_preds = clinical_predict(new_unlabelled_samples = new_unlabelled_samples,
-                                                  training_save_dir = training_save_dir,
-                                                  test_save_dir = classification_save_dir,
-                                                  seed_manager = seed_manager)
-
-    print('test_samples_preds', test_samples_preds)
-
-    seed_manager.save_state(experiment_path)
-    patient_samples_info_df = samples_info_df[samples_info_df['patient_id']]
-    samples_ids = get_sample_ids(patient_samples_info_df)
-    
-    plot_data = prepare_boxplot_data(classification_save_dir, test_samples_preds,  best_thr = best_thr, samples_ids = samples_ids)
-    print('plot_data', plot_data)
-    show_clinical_boxplots(plot_data = plot_data,
-                          save_dir = classification_save_dir, file_name = 'Positivity_Score_boxplots.pdf',
-                          title = None,
-                          fold_or_seed = 'Fold')
-    
-    return test_samples_preds, best_thr
-'''
 def classify_new_samples(experiment_path, new_unlabelled_samples, samples_info_df, seed_manager = None):
     
     training_save_dir = f'{experiment_path}/training/'
@@ -286,14 +257,6 @@ def _temp_test_extraction(test_pat, multiple_donations, ALL_DATASETS = None, mem
     test_datasets_extracted = donation_extraction(test_pat, multiple_donations, ALL_DATASETS = ALL_DATASETS)
     original_test_datasets, original_test_y = retrieve_labels(test_datasets_extracted, remove=True, flat=True)
     return original_test_datasets, original_test_y
-
-import seaborn as sns
-
-
-
-
-
-
 
 
 

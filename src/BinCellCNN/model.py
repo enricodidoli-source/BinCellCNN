@@ -438,9 +438,10 @@ def train_model(train_samples = None, train_phenotypes = None, outdir = None,
     X_v = np.swapaxes(X_v, 2, 1)
 
     n_classes = len(np.unique(train_phenotypes))
+    print('y_tr', y_tr)
+    print('n_classes', n_classes)
     y_tr = keras.utils.to_categorical(y_tr, n_classes)
     y_v = keras.utils.to_categorical(y_v, n_classes)
-
 
     if grid:
         # define all cobinations of parameters

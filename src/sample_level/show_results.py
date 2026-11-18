@@ -120,7 +120,10 @@ def show_all_LOPO_boxplots(results_df, save_dir=None, file_name=None, title=None
 
     sample_thr = df['best_thr'].to_numpy()                      # soglia per sample
 
-    thresholds_list = np.unique(df['best_thr'].to_numpy())
+    grouped_df = df.groupby('fold')
+    thresholds_list = grouped_df['best_thr'].first().tolist()
+
+    
     by_fold = df.groupby('fold', sort=True)
     num_samples_cum = by_fold.size().cumsum().tolist()
     x_axis_1_labels = df['samples_ids'].tolist()
@@ -185,7 +188,7 @@ def show_all_LOPO_boxplots(results_df, save_dir=None, file_name=None, title=None
         else:
             x_min = num_samples_cum[i-1] + 0.5
         x_max = num_samples_cum[i] + 0.5
-        print(x_max)
+        #print(x_max)
         box_label = f'j-th LOPO Threshold' if i == 0 else None
 
         ax.hlines(y=threshold, xmin=x_min, xmax=x_max, color='red',
