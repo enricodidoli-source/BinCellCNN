@@ -137,18 +137,19 @@ Follow the [data preparation guide](Data/Data_README.md).
 ---
  
 ## Dependencies
- 
+
 | Library | Version |
 |---|---|
-| TensorFlow | 2.19.0 |
-| Scikit-learn | 1.6.1 |
-| NumPy | 2.0.2 |
-| Pandas | 2.2.2 |
-| Optuna | 4.8.0 |
-| FlowIO | 1.4.0 |
-| Matplotlib | 3.10.0 |
-| Seaborn | 0.13.2 |
-| SciPy | 1.16.3 |
+| NumPy | `>=1.26.0` |
+| Pandas | `>=2.2.0` |
+| SciPy | `>=1.14.0` |
+| Scikit-learn | `>=1.5.0` |
+| TensorFlow | `>=2.20.0` |
+| Keras | `>=3.11.0` |
+| FlowIO | `>=1.4.0` |
+| Matplotlib | `>=3.9.0` |
+| Seaborn | `>=0.13.0` |
+| Optuna | `>=3.6.0` |
  
 Install all dependencies with:
  
