@@ -56,9 +56,9 @@ The different settings were compared across Leave-One-Patient-Out Cross-Validati
 - **CellCNN Default + Threshold Tuning:** Uses the same baseline configuration, but tunes the classification threshold on validation folds by maximizing the F1-score.
 - **Thesis Settings:** The approach developed in my Master's Thesis, which predicts multiple subsets per sample, aggregates their predictions, and performs threshold tuning.
 
-![CellCNN Default](img/cellcnn_default.png)
-![CellCNN Default + Threshold Tuning](img/cellcnn_default_thr.png)
-![Thesis Settings](img/thesis_settings.png)
+![CellCNN Default](img/cellcnn_default.pdf)
+![CellCNN Default + Threshold Tuning](img/cellcnn_default_thr.pdf)
+![Thesis Settings](img/thesis_settings.pdf)
 
 > **Methodological note:** These comparisons reflect the practical evolution of the pipeline and codebase refactoring rather than a strict model comparison. In addition to changes in sample-level inference and threshold tuning, the settings differ in data augmentation parameters (such as `ncell` and `nsubset`).
 
