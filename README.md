@@ -10,6 +10,15 @@
 >
 > **[Click here to see all code differences between the Thesis version and the Current version](https://github.com/enricodidoli-source/BinCellCNN/compare/thesis-version...main)**.
 
+
+---
+
+## Roadmap & Current Implementations
+
+- **Code Cleanup:** Ongoing removal of remaining debug, print statements and codebase readability refinement.
+- **Uncertainty Quantification using Bayesian Statistics**
+- **Cell-Level Analysis:** Implementation and integration of the full cell-level classification pipeline.
+
 ---
 
 ## Overview
@@ -41,13 +50,20 @@ A structured usable guide is going to be released to prepare the set-up for real
 
 ---
 
-## Roadmap & Current Implementations
+The different settings were compared across Leave-One-Patient-Out Cross-Validation (LOPOCV):
 
-- **Code Cleanup:** Ongoing removal of remaining debug, print statements and codebase readability refinement.
-- **Uncertainty Quantification using Bayesian Statistics**
-- **Cell-Level Analysis:** Implementation and integration of the full cell-level classification pipeline.
+- **CellCNN Default:** Uses the baseline variable values from the original CellCNN setup with a fixed classification threshold of `0.5`.
+- **CellCNN Default + Threshold Tuning:** Uses the same baseline configuration, but tunes the classification threshold on validation folds by maximizing the F1-score.
+- **Thesis Settings:** The approach developed in my Master's Thesis, which predicts multiple subsets per sample, aggregates their predictions, and performs threshold tuning.
+
+![CellCNN Default](img/cellcnn_default.png)
+![CellCNN Default + Threshold Tuning](img/cellcnn_default_thr.png)
+![Thesis Settings](img/thesis_settings.png)
+
+> **Methodological note:** These comparisons reflect the practical evolution of the pipeline and codebase refactoring rather than a strict model comparison. In addition to changes in sample-level inference and threshold tuning, the settings differ in data augmentation parameters (such as `ncell` and `nsubset`).
 
 ---
+
 
 ## Repository Structure
  
